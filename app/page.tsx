@@ -10,6 +10,7 @@ import { UserProfileComponent } from "@/components/user-profile"
 import { LogoutConfirmationDialog } from "@/components/logout-confirmation-dialog"
 import { useTranslation } from "react-i18next"
 import { LanguageSelector } from "@/components/language-selector"
+import { useToast } from "@/hooks/use-toast"
 import { usePwaInstall } from "@/hooks/use-pwa-install"
 
 export default function HomePage() {
@@ -22,12 +23,40 @@ export default function HomePage() {
   const pathname = usePathname()
   const { canInstall, hasInstallEvent, showPrompt, triggerInstall, dismissPrompt } = usePwaInstall()
 
+  const { toast } = useToast()
+  const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
+
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!loading && !isAuthenticated) {
       router.push('/login')
     }
   }, [loading, isAuthenticated, router])
+
+  // 🔔 Show notifications from query params (e.g., kicked, host-left)
+  useEffect(() => {
+    if (!searchParams) return
+
+    const message = searchParams.get('message')
+    if (message === 'kicked') {
+      toast({
+        title: t('lobby.kickedTitle') || "You've been removed",
+        description: t('lobby.kickedDesc') || "The host has removed you from the room.",
+        variant: "destructive",
+        duration: 5000,
+      })
+      // Clear URL to avoid repeated toasts
+      window.history.replaceState({}, '', '/')
+    } else if (message === 'host-left') {
+      toast({
+        title: t('lobby.roomClosed') || "Room Closed",
+        description: t('lobby.hostLeftDesc') || "The host has left or closed the room.",
+        variant: "default",
+        duration: 5000,
+      })
+      window.history.replaceState({}, '', '/')
+    }
+  }, [searchParams, toast, t])
 
 
 
@@ -206,8 +235,8 @@ export default function HomePage() {
                     }}
                     className="w-full px-4 py-3 text-left hover:bg-purple-800/60 transition-colors duration-200 flex items-center gap-3"
                   >
-                    <Download className="w-5 h-5 text-white" />
-                    <span className="text-white font-medium">{t('pwa.installApp')}</span>
+                    <Download className="w-4 h-4 text-white" />
+                    <span className="text-white font-bold text-[10px] pixel-font">{t('pwa.installApp')}</span>
                   </button>
 
                   <div className="border-t border-purple-500/40 my-1"></div>
@@ -223,11 +252,11 @@ export default function HomePage() {
                 className="w-full px-4 py-3 text-left hover:bg-purple-800/60 transition-colors duration-200 flex items-center gap-3"
               >
                 {isFullscreen ? (
-                  <Minimize2 className="w-5 h-5 text-white" />
+                  <Minimize2 className="w-4 h-4 text-white" />
                 ) : (
-                  <Maximize2 className="w-5 h-5 text-white" />
+                  <Maximize2 className="w-4 h-4 text-white" />
                 )}
-                <span className="text-white font-medium">
+                <span className="text-white font-bold text-[10px] pixel-font">
                   {isFullscreen ? t('Exit Fullscreen') || 'Exit Fullscreen' : t('Fullscreen') || 'Fullscreen'}
                 </span>
               </button>
@@ -240,13 +269,13 @@ export default function HomePage() {
                   onClick={showLogoutDialog}
                   className="w-full px-4 py-3 text-left hover:bg-purple-800/60 transition-colors duration-200 flex items-center gap-3"
                 >
-                  <LogIn className="w-5 h-5 text-white" />
-                  <span className="text-white font-medium">{t('menu.logout')}</span>
+                  <LogIn className="w-4 h-4 text-white" />
+                  <span className="text-white font-bold text-[10px] pixel-font">{t('menu.logout')}</span>
                 </button>
               ) : (
                 <Link href="/login" className="w-full px-4 py-3 text-left hover:bg-purple-800/60 transition-colors duration-200 flex items-center gap-3">
-                  <LogIn className="w-5 h-5 text-white" />
-                  <span className="text-white font-medium">{t('menu.login')}</span>
+                  <LogIn className="w-4 h-4 text-white" />
+                  <span className="text-white font-bold text-[10px] pixel-font">{t('menu.login')}</span>
                 </Link>
               )}
             </div>
@@ -343,7 +372,7 @@ export default function HomePage() {
           <div className="flex justify-center mb-6 sm:mb-12">
             <div className="inline-flex bg-black/30 border-2 border-white/40 rounded-xl px-6 sm:px-10 py-3 sm:py-5 pixel-description backdrop-blur-sm">
               <p
-                className="text-xl sm:text-2xl md:text-3xl lg:text-4xl text-white font-bold whitespace-nowrap tracking-wide"
+                className="text-sm sm:text-lg md:text-xl lg:text-2xl text-white font-bold whitespace-nowrap tracking-tight pixel-font"
                 style={{
                   textShadow: '0 0 10px rgba(255,255,255,0.5), 0 2px 4px rgba(0,0,0,0.8)'
                 }}
@@ -361,10 +390,10 @@ export default function HomePage() {
               <div className="absolute inset-0 bg-linear-to-br from-green-600 to-emerald-600 rounded-lg transform rotate-1 pixel-button-shadow"></div>
               <button className="relative w-full h-14 sm:h-20 lg:h-24 bg-linear-to-br from-green-500 to-emerald-500 border-2 sm:border-4 border-black rounded-lg shadow-2xl font-bold text-black text-base sm:text-2xl lg:text-3xl pixel-button-host transform hover:scale-105 transition-all duration-300 px-3 sm:px-6">
                 <div className="flex items-center justify-center gap-2 sm:gap-4">
-                  <div className="w-6 h-6 sm:w-8 sm:h-8 bg-black rounded border-2 border-white flex items-center justify-center">
+                  <div className="hidden sm:flex w-6 h-6 sm:w-8 sm:h-8 bg-black rounded border-2 border-white items-center justify-center">
                     <Server className="w-3 h-3 sm:w-5 sm:h-5 text-white" />
                   </div>
-                  <span className="text-lg sm:text-2xl lg:text-3xl font-bold">{t('home.host')}</span>
+                  <span className="text-xs sm:text-lg lg:text-xl font-bold pixel-font">{t('home.host')}</span>
                 </div>
               </button>
             </div>
@@ -375,10 +404,10 @@ export default function HomePage() {
               <div className="absolute inset-0 bg-linear-to-br from-blue-600 to-purple-600 rounded-lg transform rotate-1 pixel-button-shadow"></div>
               <button className="relative w-full h-14 sm:h-20 lg:h-24 bg-linear-to-br from-blue-500 to-purple-500 border-2 sm:border-4 border-black rounded-lg shadow-2xl font-bold text-white text-base sm:text-2xl lg:text-3xl pixel-button-join transform hover:scale-105 transition-all duration-300 px-3 sm:px-6">
                 <div className="flex items-center justify-center gap-2 sm:gap-4">
-                  <div className="w-6 h-6 sm:w-8 sm:h-8 bg-white rounded border-2 border-black flex items-center justify-center">
+                  <div className="hidden sm:flex w-6 h-6 sm:w-8 sm:h-8 bg-white rounded border-2 border-black items-center justify-center">
                     <Play className="w-3 h-3 sm:w-5 sm:h-5 text-black" />
                   </div>
-                  <span className="text-lg sm:text-2xl lg:text-3xl font-bold">{t('home.join')}</span>
+                  <span className="text-xs sm:text-lg lg:text-xl font-bold pixel-font">{t('home.join')}</span>
                 </div>
               </button>
             </div>

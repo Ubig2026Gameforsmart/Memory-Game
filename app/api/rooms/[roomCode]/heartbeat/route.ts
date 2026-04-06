@@ -17,18 +17,30 @@ export async function POST(
       )
     }
 
-    // Update player's last heartbeat timestamp
-    const { error: updateError } = await supabase
-      .from('players')
-      .update({ 
-        last_heartbeat: new Date().toISOString(),
-        client_time_offset: clientTime ? Date.now() - clientTime : null
-      })
-      .eq('room_code', roomCode)
-      .eq('player_id', playerId)
+    const clientTimeOffset = clientTime ? Date.now() - clientTime : null
 
-    if (updateError) {
-      console.error('[Heartbeat API] Error updating heartbeat:', updateError)
+    // Update player's last heartbeat timestamp using Supabase B if available
+    const { participantsApi, isPlayersSupabaseConfigured } = await import('@/lib/supabase-players')
+    
+    let success = false
+    if (isPlayersSupabaseConfigured()) {
+      success = await participantsApi.updateHeartbeat(playerId, clientTimeOffset)
+    } else {
+      // Fallback to Supabase A participants table if players DB not used
+      const { error: updateError } = await supabase
+        .from('participants')
+        .update({ 
+          last_heartbeat: new Date().toISOString(),
+          client_time_offset: clientTimeOffset
+        })
+        .eq('room_code', roomCode)
+        .eq('id', playerId)
+      
+      success = !updateError
+      if (updateError) console.error('[Heartbeat API] Error updating fallback heartbeat:', updateError)
+    }
+
+    if (!success) {
       return NextResponse.json(
         { error: 'Failed to update heartbeat' },
         { status: 500 }

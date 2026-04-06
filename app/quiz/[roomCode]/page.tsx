@@ -16,8 +16,10 @@ import { sessionManager } from "@/lib/supabase-session-manager"
 import { supabaseRoomManager } from "@/lib/supabase-room-manager"
 import { quizApi } from "@/lib/supabase"
 import { scoreUpdateQueue } from "@/lib/score-update-queue"
-import { participantsApi } from "@/lib/supabase-players"
+import { participantsApi, isPlayersSupabaseConfigured, supabasePlayers } from "@/lib/supabase-players"
+import { supabase } from "@/lib/supabase"
 import { useTranslation } from "react-i18next"
+import { CountdownTimer } from "@/components/countdown-timer"
 
 interface QuizPageProps {
   params: {
@@ -420,7 +422,11 @@ export default function QuizPage({ params, searchParams }: QuizPageProps) {
 
   // CRITICAL: Initialize quiz questions - FIX infinite loading
   useEffect(() => {
-    if (!loading && (!room || !room.gameStarted)) {
+    // 🚀 FIX: Allow access if in countdown even if gameStarted is technically false
+    const isInCountdown = room?.status === "countdown" || (room?.countdownStartTime && !room?.gameStarted)
+
+    if (!loading && (!room || (!room.gameStarted && !isInCountdown))) {
+      console.warn('[Quiz] 🔒 Security redirect: Game not started and not in countdown')
       window.location.href = "/"
       return
     }
@@ -808,12 +814,20 @@ export default function QuizPage({ params, searchParams }: QuizPageProps) {
 
     // 🆕 Save answer to Supabase B for history
     if (playerId && questions[currentQuestion]) {
-      participantsApi.addAnswer(params.roomCode, playerId, {
-        question_id: String(questions[currentQuestion].id),
-        answer_id: String(originalIndex),
-        is_correct: isCorrect,
-        points_earned: pointsEarned
-      }).catch(err => console.error('[Quiz] Error saving answer:', err))
+      participantsApi.addAnswer(
+        params.roomCode,
+        playerId,
+        {
+          question_id: String(questions[currentQuestion].id),
+          answer_id: String(originalIndex),
+          is_correct: isCorrect,
+          points_earned: pointsEarned
+        },
+        newScore,
+        currentQuestion + 1,
+        playerData?.nickname || 'Guest',
+        playerData?.avatar || ''
+      ).catch(err => console.error('[Quiz] Error saving answer:', err))
     }
 
 
@@ -822,8 +836,14 @@ export default function QuizPage({ params, searchParams }: QuizPageProps) {
 
 
       if (playerId) {
-
-        await roomManager.updatePlayerScore(params.roomCode, playerId, newScore, newQuestionsAnswered)
+        await roomManager.updatePlayerScore(
+          params.roomCode,
+          playerId,
+          newScore,
+          newQuestionsAnswered,
+          currentQuestion + 1,
+          newCorrectAnswers
+        )
       }
 
       const progressData = {
@@ -854,11 +874,39 @@ export default function QuizPage({ params, searchParams }: QuizPageProps) {
     // 🚀 OPTIMIZED: Use queue for normal updates, direct update only for last question
     if (playerId) {
       const updateData = {
+        nickname: playerData?.nickname,
         quizScore: newScore,
-        questionsAnswered: newQuestionsAnswered
+        questionsAnswered: newQuestionsAnswered,
+        currentQuestion: currentQuestion + 1,
+        correctAnswers: newCorrectAnswers
       }
 
       const isLastQuestion = currentQuestion >= questions.length - 1
+
+      // 🚀 ALWAYS Broadcast progress update for instant UI sync (Cross-Device Realtime via Supabase)
+      try {
+        const client = isPlayersSupabaseConfigured() ? supabasePlayers : supabase;
+        const broadcastChannel = client.channel(`progress-${params.roomCode}`)
+        broadcastChannel.subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            broadcastChannel.send({
+              type: 'broadcast',
+              event: 'progress-update',
+              payload: {
+                playerId,
+                updateData,
+                timestamp: Date.now()
+              }
+            }).catch(e => console.error('[Quiz] Error sending broadcast:', e))
+              .finally(() => {
+                // Don't keep the channel open to avoid connection limits for temporary calls
+                client.removeChannel(broadcastChannel)
+              })
+          }
+        })
+      } catch (e) {
+        console.error('[Quiz] Broadcast fail error:', e)
+      }
 
       if (isLastQuestion) {
         // 🔴 CRITICAL: Last question - use direct update with retry for guaranteed sync
@@ -868,28 +916,12 @@ export default function QuizPage({ params, searchParams }: QuizPageProps) {
               params.roomCode,
               playerId,
               updateData.quizScore,
-              updateData.questionsAnswered
+              updateData.questionsAnswered,
+              updateData.currentQuestion,
+              updateData.correctAnswers
             )
 
             if (success) {
-              // Broadcast untuk sync instan
-              let broadcastChannel: BroadcastChannel | null = null
-              try {
-                if (typeof window !== 'undefined') {
-                  broadcastChannel = new BroadcastChannel(`progress-update-${params.roomCode}`)
-                  broadcastChannel.postMessage({
-                    type: 'progress-update',
-                    playerId,
-                    updateData,
-                    timestamp: Date.now()
-                  })
-                }
-              } finally {
-                if (broadcastChannel) {
-                  broadcastChannel.close()
-                }
-              }
-
               await new Promise(resolve => setTimeout(resolve, 1000))
               return true
             } else {
@@ -917,7 +949,9 @@ export default function QuizPage({ params, searchParams }: QuizPageProps) {
           params.roomCode,
           playerId,
           updateData.quizScore,
-          updateData.questionsAnswered
+          updateData.questionsAnswered,
+          updateData.currentQuestion,
+          updateData.correctAnswers
         ).catch(err => console.error('[Quiz] Direct score update failed:', err))
       }
     }
@@ -1077,6 +1111,18 @@ export default function QuizPage({ params, searchParams }: QuizPageProps) {
         }
       }
     }
+  }
+
+  // 🚀 PROFESSIONAL PRE-LOAD: Show countdown overlay if game is in countdown status
+  if (room?.status === "countdown") {
+    return (
+      <CountdownTimer
+        room={room}
+        onCountdownComplete={() => {
+          console.log('[Quiz] Countdown finished in pre-load overlay')
+        }}
+      />
+    )
   }
 
   // Render UI

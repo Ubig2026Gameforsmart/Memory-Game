@@ -60,7 +60,7 @@ export function LanguageSelector({ onClose }: LanguageSelectorProps) {
               className="object-cover object-center w-full h-full"
             />
           </div>
-          <span className="text-white font-medium">{getCurrentLanguageName()}</span>
+          <span className="text-white font-bold text-[10px] pixel-font">{getCurrentLanguageName()}</span>
         </button>
       ) : (
         <div className="py-2">
@@ -79,7 +79,7 @@ export function LanguageSelector({ onClose }: LanguageSelectorProps) {
                 className="object-cover object-center w-full h-full"
               />
             </div>
-            <span className="text-white font-medium">{t('menu.language')}</span>
+            <span className="text-white font-bold text-[10px] pixel-font">{t('menu.language')}</span>
           </button>
 
           {/* Divider */}
@@ -103,7 +103,7 @@ export function LanguageSelector({ onClose }: LanguageSelectorProps) {
                     className="object-cover object-center w-full h-full"
                   />
                 </div>
-                <span className="text-white font-medium">{lang.name}</span>
+                <span className="text-white font-bold text-[10px] pixel-font">{lang.name}</span>
               </div>
               {currentLanguage === lang.code && (
                 <Check className="w-5 h-5 text-green-400" />

@@ -125,19 +125,13 @@ export default function WaitingRoomPage() {
 
   // Listen for game start and countdown
   useEffect(() => {
-    // 🚀 FIX: Check for countdown first using both status and countdownStartTime
-    // This ensures countdown is detected even if status hasn't updated yet
+    // 🚀 PROFESSIAL PRE-LOAD: Redirect to quiz IMMEDIATELY when countdown starts
+    // This allows the quiz page to load assets while the countdown is running
     if (room?.status === "countdown" || (room?.countdownStartTime && !room?.gameStarted)) {
-      // Force countdown to show immediately
-      setForceCountdown(true)
-      // Countdown will be handled by the CountdownTimer component
-      // No need to set gameStarting state for countdown
+      console.log('[WaitingRoom] 🚀 Countdown detected, redirecting for pre-loading...')
+      window.location.href = `/quiz/${roomCode}`
     } else if (room?.status === "quiz" && !gameStarting) {
-      // Only redirect to quiz after countdown completes (status becomes 'quiz')
       setGameStarting(true)
-      setForceCountdown(false)
-
-      // Add a small delay before redirecting
       window.location.href = `/quiz/${roomCode}`
     }
   }, [room?.status, room?.countdownStartTime, room?.gameStarted, gameStarting, roomCode])
@@ -253,10 +247,23 @@ export default function WaitingRoomPage() {
       setForceCountdown(true)
     }
 
-    window.addEventListener('countdown-detected', handleCountdownDetected as EventListener)
+    // 🚀 PROFESSIONAL KICK LISTENER: Global event from Supabase Realtime
+    const handleRealtimeKick = (event: any) => {
+      const currentPlayerInfo = playerInfoRef.current
+      if (event.detail.playerId === currentPlayerInfo?.playerId) {
+        console.log('[WaitingRoom] 👢 Kicked via PROFESSIONAL REALTIME SIGNAL')
+        sessionManager.clearSession().catch(console.error)
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem("currentPlayer")
+        }
+        window.location.href = "/?message=kicked"
+      }
+    }
+    window.addEventListener(`kick-detected-${roomCode}` as any, handleRealtimeKick)
 
     return () => {
       window.removeEventListener('countdown-detected', handleCountdownDetected as EventListener)
+      window.removeEventListener(`kick-detected-${roomCode}` as any, handleRealtimeKick)
       broadcastChannel.close()
       kickChannel.close()
       hostLeftChannel.close()
@@ -266,28 +273,63 @@ export default function WaitingRoomPage() {
 
 
   // Reactive kick detection and countdown check based on room updates
+  const kickCheckRef = useRef<number>(0)
+  const isKickedConfirming = useRef<boolean>(false)
+  const joinTimeRef = useRef<number>(Date.now())
+
   useEffect(() => {
     if (!playerInfo || !room || !roomCode) return
 
-    // Check for countdown status
+    // 1. Check for countdown status
     if (room.status === "countdown") {
-
       setForceCountdown(true)
     }
 
-    // Check if player is still in the room (Kick detection)
-    const existingPlayer = room.players.find(p => p.id === playerInfo.playerId)
-    if (!existingPlayer) {
+    // 2. 👢 ROBUST KICK DETECTION (Cross-device support)
+    // Check if I am still in the players list
+    const isStillInRoom = room.players?.some(p => p.id === playerInfo.playerId)
 
+    // 🔧 PROFESSNAL FIX: NEVER kick based on list presence during countdown
+    // During countdown, status changes are rapid and sync gaps can occur.
+    // We only kick if status is 'waiting' (lobby) and grace period has passed.
+    const isLobbyMode = room.status === 'waiting'
+    const gracePeriodElapsed = Date.now() - joinTimeRef.current > 5000
 
-      // Clear session when kicked
-      sessionManager.clearSession().catch(console.error)
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem("currentPlayer")
+    if (room.players && !isStillInRoom && isLobbyMode && gracePeriodElapsed) {
+      kickCheckRef.current += 1
+      console.warn(`[WaitingRoom] 👢 Kick detected (check ${kickCheckRef.current}): Not in list`)
+
+      // If first detection, set a timeout to check again automatically 
+      // in case no more room updates arrive from Supabase
+      if (!isKickedConfirming.current) {
+        isKickedConfirming.current = true
+        setTimeout(async () => {
+          try {
+            console.log('[WaitingRoom] 👢 Confirmation check: verifies if still kicked...')
+            const freshRoom = await roomManager.getRoom(roomCode)
+            const stillMissing = !freshRoom || !freshRoom.players?.some((p: any) => p.id === playerInfo.playerId)
+
+            if (stillMissing) {
+              console.log('[WaitingRoom] 👢 KICK CONFIRMED by confirmation check')
+              sessionManager.clearSession().catch(console.error)
+              if (typeof window !== 'undefined') {
+                localStorage.removeItem("currentPlayer")
+              }
+              window.location.href = "/?message=kicked"
+            } else {
+              console.log('[WaitingRoom] 😇 Player found in fresh room data, cancelling kick.')
+              isKickedConfirming.current = false
+              kickCheckRef.current = 0
+            }
+          } catch (e) {
+            isKickedConfirming.current = false
+          }
+        }, 3000) // 3 seconds safety window
       }
-
-      // Redirect to landing page
-      window.location.href = "/"
+    } else if (isStillInRoom) {
+      // Reset check count if we are seen in the list
+      kickCheckRef.current = 0
+      isKickedConfirming.current = false
     }
   }, [room, playerInfo, roomCode])
 
@@ -617,7 +659,7 @@ export default function WaitingRoomPage() {
                       <AlertDialogContent className="bg-linear-to-br from-blue-500 to-purple-500 border-2 sm:border-4 border-black shadow-2xl pixel-dialog max-w-[90vw] sm:max-w-md">
                         <AlertDialogHeader>
                           <div className="text-center mb-3 sm:mb-4">
-                          
+
                             <div className="inline-block bg-white border-2 border-black rounded px-3 py-1.5 sm:px-4 sm:py-2 mb-2 sm:mb-3">
                               <AlertDialogTitle className="text-black font-bold text-sm sm:text-base md:text-lg pixel-font">LEAVE ROOM?</AlertDialogTitle>
                             </div>
@@ -674,7 +716,7 @@ export default function WaitingRoomPage() {
                         <div className="flex-1 min-w-0">
                           <div className="font-bold text-black  text-xs sm:text-sm truncate">
                             <span className="truncate block">{playerInfo.nickname.toUpperCase()}</span>
-                          
+
                           </div>
                         </div>
                       </div>
@@ -699,7 +741,7 @@ export default function WaitingRoomPage() {
 
                 {/* Pixel Status Section */}
                 <div className="bg-black/20 border border-white/30 rounded p-3 sm:p-4 text-center">
-                  
+
                   <p className="text-white text-xs sm:text-sm pixel-font-sm leading-tight sm:leading-normal">
                     {room.gameStarted ? "GAME STARTING SOON..." : "WAITING FOR HOST TO START THE GAME..."}
                   </p>

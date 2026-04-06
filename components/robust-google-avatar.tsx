@@ -141,8 +141,11 @@ export function RobustGoogleAvatar({ avatarUrl, alt, className = "", width = 32,
 
   if (error && !imageSrc) {
     return (
-      <div className={`${className} bg-gradient-to-br from-blue-400 to-purple-400 rounded-full border-2 border-white/50 flex items-center justify-center`} style={{ width, height }}>
-        <span className="text-white font-bold text-sm">
+      <div 
+        className={`${className} bg-blue-500 rounded-full border-2 border-white/50 flex items-center justify-center`} 
+        style={{ width, height }}
+      >
+        <span className="text-white font-bold text-[10px] sm:text-[12px] pixel-font">
           {alt.charAt(0).toUpperCase()}
         </span>
       </div>
@@ -151,7 +154,10 @@ export function RobustGoogleAvatar({ avatarUrl, alt, className = "", width = 32,
 
   if (loading && !imageSrc) {
     return (
-      <div className={`${className} bg-gradient-to-br from-blue-400 to-purple-400 rounded-full border-2 border-white/50 flex items-center justify-center`} style={{ width, height }}>
+      <div 
+        className={`${className} bg-blue-400 rounded-full border-2 border-white/50 flex items-center justify-center`} 
+        style={{ width, height }}
+      >
         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
       </div>
     )

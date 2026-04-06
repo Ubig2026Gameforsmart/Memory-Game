@@ -236,7 +236,7 @@ export default function LoginPage() {
                                 <path fill="#34A853" d="M5.69 13.04c-.21-.63-.32-1.3-.32-2 0-.7.11-1.37.32-2L2.5 6.58C1.79 8 1.4 9.57 1.4 11.26s.39 3.26 1.1 4.68l3.19-2.9z" />
                               </svg>
                             </span>
-                            <span className="text-base sm:text-xl font-extrabold tracking-wide drop-shadow-[0_1px_0_rgba(0,0,0,0.35)]">
+                            <span className="text-xs sm:text-sm font-extrabold tracking-tight drop-shadow-[0_1px_0_rgba(0,0,0,0.35)] pixel-font">
                               Sign in with Google
                             </span>
                           </div>
@@ -247,7 +247,7 @@ export default function LoginPage() {
                   {/* Google Error Message */}
                   {errors.general && (
                     <div className="pt-2">
-                      <p className="text-red-400 text-xs font-bold pixel-font-sm text-center">{errors.general}</p>
+                      <p className="text-red-400 text-[10px] font-bold pixel-font text-center">{errors.general}</p>
                     </div>
                   )}
                 </div>
@@ -255,7 +255,7 @@ export default function LoginPage() {
                 {/* Divider */}
                 <div className="flex items-center gap-4 pb-4">
                   <div className="flex-1 h-px bg-white/30"></div>
-                  <span className="text-white/70 font-bold text-sm">OR</span>
+                  <span className="text-white/70 font-bold text-[10px] pixel-font">OR</span>
                   <div className="flex-1 h-px bg-white/30"></div>
                 </div>
 
@@ -272,12 +272,12 @@ export default function LoginPage() {
                       placeholder="Enter your email or username"
                       value={formData.email}
                       onChange={handleInputChange}
-                      className={`pl-10 sm:pl-12 h-10 sm:h-12 bg-white border-2 border-black rounded-none shadow-lg font-mono text-sm sm:text-base text-black placeholder:text-gray-500 focus:border-blue-600 ${errors.email ? 'border-red-500' : ''
+                      className={`pl-10 sm:pl-12 h-10 sm:h-12 bg-white border-2 border-black rounded-none shadow-lg font-mono text-sm sm:text-base text-black placeholder:text-gray-400 placeholder:text-[8px] sm:placeholder:text-[10px] placeholder:pixel-font focus:border-blue-600 ${errors.email ? 'border-red-500' : ''
                         }`}
                     />
                   </div>
                   {errors.email && (
-                    <p className="text-red-400 text-xs font-bold pixel-font-sm">{errors.email}</p>
+                    <p className="text-red-400 text-[10px] font-bold pixel-font">{errors.email}</p>
                   )}
                 </div>
 
@@ -294,7 +294,7 @@ export default function LoginPage() {
                       placeholder="Enter your password"
                       value={formData.password}
                       onChange={handleInputChange}
-                      className={`pl-10 sm:pl-12 pr-10 sm:pr-12 h-13 sm:h-12 bg-white border-2 border-black rounded-none shadow-lg font-mono text-sm sm:text-base text-black placeholder:text-gray-500 focus:border-blue-600 ${errors.password ? 'border-red-500' : ''
+                      className={`pl-10 sm:pl-12 pr-10 sm:pr-12 h-10 sm:h-12 bg-white border-2 border-black rounded-none shadow-lg font-mono text-sm sm:text-base text-black placeholder:text-gray-400 placeholder:text-[8px] sm:placeholder:text-[10px] placeholder:pixel-font focus:border-blue-600 ${errors.password ? 'border-red-500' : ''
                         }`}
                     />
                     <button
@@ -310,7 +310,7 @@ export default function LoginPage() {
                     </button>
                   </div>
                   {errors.password && (
-                    <p className="text-red-400 text-xs font-bold pixel-font-sm">{errors.password}</p>
+                    <p className="text-red-400 text-[10px] font-bold pixel-font">{errors.password}</p>
                   )}
                 </div>
 
@@ -325,13 +325,12 @@ export default function LoginPage() {
                     >
                       {isLoading ? (
                         <div className="flex items-center gap-2">
-                          <div className="w-5 h-5 sm:w-6 sm:h-6 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
-                          <span className="text-lg sm:text-xl font-bold">LOGGING IN...</span>
+                          <div className="w-4 h-4 sm:w-5 sm:h-5 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
+                          <span className="text-xs sm:text-sm font-bold pixel-font">LOGGING IN...</span>
                         </div>
                       ) : (
                         <div className="flex items-center justify-center gap-2 sm:gap-4">
-
-                          <span className="text-lg sm:text-xl font-bold">LOGIN</span>
+                          <span className="text-sm sm:text-base font-bold pixel-font">LOGIN</span>
                         </div>
                       )}
                     </Button>
@@ -339,13 +338,13 @@ export default function LoginPage() {
                   {/* General Error Message */}
                   {errors.general && (
                     <div className="pt-2">
-                      <p className="text-red-400 text-xs font-bold pixel-font-sm text-center">{errors.general}</p>
+                      <p className="text-red-400 text-[10px] font-bold pixel-font text-center">{errors.general}</p>
                     </div>
                   )}
 
                   {/* Register Link */}
                   <div className="text-center pt-4">
-                    <p className="text-white text-sm font-mono">
+                    <p className="text-white text-[10px] pixel-font">
                       Don't have an account?{" "}
                       <a
                         href="https://gameforsmart2025.vercel.app/auth/register"

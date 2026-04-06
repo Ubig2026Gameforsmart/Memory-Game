@@ -121,21 +121,26 @@ export function useQuizzes() {
         // Cache the fresh data
         setCachedQuizzes(data)
       } else {
-
         const transformedLocalQuizzes: Quiz[] = localQuizzes.map(q => ({
           id: q.id,
           title: q.title,
           description: q.description,
           category: q.category,
-          questions: q.questions.map(qt => ({
-            id: qt.id.toString(),
-            question: qt.question,
-            type: 'multiple_choice',
-            options: qt.options,
-            correct_answer: qt.options[qt.correct],
-            explanation: qt.explanation,
-            points: 10
-          })),
+          questions: q.questions.map(qt => {
+            const options = qt.options.map(opt => typeof opt === 'string' ? opt : opt.text)
+            const correctOpt = qt.options[qt.correct]
+            const correctAnswer = typeof correctOpt === 'string' ? correctOpt : (correctOpt as any).text
+            
+            return {
+              id: qt.id.toString(),
+              question: qt.question,
+              type: 'multiple_choice',
+              options: options,
+              correct_answer: correctAnswer,
+              explanation: qt.explanation,
+              points: 10
+            }
+          }),
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         }))
@@ -152,15 +157,21 @@ export function useQuizzes() {
           title: q.title,
           description: q.description,
           category: q.category,
-          questions: q.questions.map(qt => ({
-            id: qt.id.toString(),
-            question: qt.question,
-            type: 'multiple_choice',
-            options: qt.options,
-            correct_answer: qt.options[qt.correct],
-            explanation: qt.explanation,
-            points: 10
-          })),
+          questions: q.questions.map(qt => {
+            const options = qt.options.map(opt => typeof opt === 'string' ? opt : opt.text)
+            const correctOpt = qt.options[qt.correct]
+            const correctAnswer = typeof correctOpt === 'string' ? correctOpt : (correctOpt as any).text
+            
+            return {
+              id: qt.id.toString(),
+              question: qt.question,
+              type: 'multiple_choice',
+              options: options,
+              correct_answer: correctAnswer,
+              explanation: qt.explanation,
+              points: 10
+            }
+          }),
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         }))

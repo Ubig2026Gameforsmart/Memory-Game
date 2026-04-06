@@ -307,16 +307,16 @@ function QuizSettingsPageContent() {
                           <div className="h-6 bg-gray-300 rounded mb-2"></div>
                           <div className="h-4 bg-gray-200 rounded"></div>
                         </div>
-                        <p className="text-sm text-gray-500 pixel-font-sm">{t('quizSettings.loadingQuizData')}</p>
+                        <p className="text-[10px] text-gray-500 pixel-font">{t('quizSettings.loadingQuizData')}</p>
                       </div>
                     </div>
                   ) : quiz ? (
                     <div className="bg-white border-2 border-black rounded-lg p-3 sm:p-4 pixel-quiz-info">
                       <div className="text-center space-y-2">
-                        <h2 className="text-lg sm:text-xl font-bold text-black pixel-font">
+                        <h2 className="text-sm sm:text-lg font-bold text-black pixel-font leading-tight">
                           {quiz.title}
                         </h2>
-                        <p className="text-sm sm:text-base text-gray-700 pixel-font-sm leading-relaxed">
+                        <p className="text-[9px] sm:text-[10px] text-gray-700 pixel-font leading-relaxed">
                           {quiz.description}
                         </p>
                       </div>
@@ -332,25 +332,25 @@ function QuizSettingsPageContent() {
                         <Clock className="h-3 w-3 sm:h-4 sm:w-4 text-black" />
                       </div>
                       <div className="inline-block bg-blue-500 border border-black rounded px-2 py-1">
-                        <Label className="text-shadow-black font-bold text-xs pixel-font-xl">{t('quizSettings.timeLimit')}</Label>
+                        <Label className="text-shadow-black font-bold text-[8px] sm:text-[10px] pixel-font">{t('quizSettings.timeLimit')}</Label>
                       </div>
                     </div>
                     <div className="bg-blue-500 border-2 border-black rounded px-2 sm:px-3 py-1">
-                      <span className="text-black font-bold text-sm  sm:text-base pixel-font-xl">{timeLimit} {t('quizSettings.minutes')}</span>
+                      <span className="text-black font-bold text-[8px] sm:text-[10px] pixel-font">{timeLimit} {t('quizSettings.minutes')}</span>
                     </div>
                   </div>
                   <div className="relative">
                     <Select value={timeLimit} onValueChange={setTimeLimit}>
-                      <SelectTrigger className="w-full bg-white border-2 border-black rounded-none shadow-lg font-mono text-sm sm:text-base text-black h-10 sm:h-12">
+                      <SelectTrigger className="w-full bg-white border-2 border-black rounded-none shadow-lg font-bold text-[8px] sm:text-[10px] pixel-font text-black h-10 sm:h-12">
                         <SelectValue placeholder="Select time limit" />
                       </SelectTrigger>
                       <SelectContent className="bg-white border-2 border-black">
-                        <SelectItem value="5">5 {t('quizSettings.minutes')}</SelectItem>
-                        <SelectItem value="10">10 {t('quizSettings.minutes')}</SelectItem>
-                        <SelectItem value="15">15 {t('quizSettings.minutes')}</SelectItem>
-                        <SelectItem value="20">20 {t('quizSettings.minutes')}</SelectItem>
-                        <SelectItem value="25">25 {t('quizSettings.minutes')}</SelectItem>
-                        <SelectItem value="30">30 {t('quizSettings.minutes')}</SelectItem>
+                        <SelectItem value="5" className="pixel-font text-[10px]">5 {t('quizSettings.minutes')}</SelectItem>
+                        <SelectItem value="10" className="pixel-font text-[10px]">10 {t('quizSettings.minutes')}</SelectItem>
+                        <SelectItem value="15" className="pixel-font text-[10px]">15 {t('quizSettings.minutes')}</SelectItem>
+                        <SelectItem value="20" className="pixel-font text-[10px]">20 {t('quizSettings.minutes')}</SelectItem>
+                        <SelectItem value="25" className="pixel-font text-[10px]">25 {t('quizSettings.minutes')}</SelectItem>
+                        <SelectItem value="30" className="pixel-font text-[10px]">30 {t('quizSettings.minutes')}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -364,22 +364,22 @@ function QuizSettingsPageContent() {
                         <HelpCircle className="h-3 w-3 sm:h-4 sm:w-4 text-black" />
                       </div>
                       <div className="inline-block bg-blue-300 border border-black rounded px-2 py-1">
-                        <Label className=" text-shadow-black font-bold text-xs pixel-font-xl">{t('quizSettings.questions')}</Label>
+                        <Label className=" text-shadow-black font-bold text-[8px] sm:text-[10px] pixel-font">{t('quizSettings.questions')}</Label>
                       </div>
                     </div>
                     <div className="bg-blue-300 border-2 border-black rounded px-2 sm:px-3 py-1">
-                      <span className="text-black font-bold text-sm sm:text-base pixel-font-xl">{questionCount} </span>
+                      <span className="text-black font-bold text-[8px] sm:text-[10px] pixel-font">{questionCount} </span>
                     </div>
                   </div>
                   <div className="relative">
                     <Select value={questionCount} onValueChange={setQuestionCount}>
-                      <SelectTrigger className="w-full bg-white border-2 border-black rounded-none shadow-lg font-mono text-sm sm:text-base text-black h-10 sm:h-12">
+                      <SelectTrigger className="w-full bg-white border-2 border-black rounded-none shadow-lg font-bold text-[8px] sm:text-[10px] pixel-font text-black h-10 sm:h-12">
                         <SelectValue placeholder="Select question count" />
                       </SelectTrigger>
                       <SelectContent className="bg-white border-2 border-black">
-                        <SelectItem value="5">5 {t('quizSettings.questionsShort')}</SelectItem>
-                        <SelectItem value="10">10 {t('quizSettings.questionsShort')}</SelectItem>
-                        <SelectItem value="20">20 {t('quizSettings.questionsShort')}</SelectItem>
+                        <SelectItem value="5" className="pixel-font text-[10px]">5 {t('quizSettings.questionsShort')}</SelectItem>
+                        <SelectItem value="10" className="pixel-font text-[10px]">10 {t('quizSettings.questionsShort')}</SelectItem>
+                        <SelectItem value="20" className="pixel-font text-[10px]">20 {t('quizSettings.questionsShort')}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -394,7 +394,7 @@ function QuizSettingsPageContent() {
                       className="relative w-full bg-gradient-to-br from-red-500 to-rose-500 border-2 border-black rounded-lg text-black hover:bg-gradient-to-br hover:from-red-400 hover:to-rose-400 transform hover:scale-105 transition-all duration-200 font-bold min-h-[44px]"
                     >
 
-                      <span className="pixel-font-xl text-sm sm:text-base">{t('quizSettings.back')}</span>
+                      <span className="pixel-font text-xs sm:text-sm">{t('quizSettings.back')}</span>
                     </Button>
                   </div>
                   <div className="flex-1 relative pixel-button-container">
@@ -404,7 +404,7 @@ function QuizSettingsPageContent() {
                       disabled={isCreatingRoom}
                       className="relative w-full bg-gradient-to-br from-green-500 to-emerald-500 border-2 border-black rounded-lg text-black hover:bg-gradient-to-br hover:from-green-400 hover:to-emerald-400 transform hover:scale-105 transition-all duration-200 font-bold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 min-h-[44px]"
                     >
-                      <span className="pixel-font-xl text-sm sm:text-base">{isCreatingRoom ? t('quizSettings.creating') : t('quizSettings.createRoom')}</span>
+                      <span className="pixel-font text-xs sm:text-sm">{isCreatingRoom ? t('quizSettings.creating') : t('quizSettings.createRoom')}</span>
                     </Button>
                   </div>
                 </div>

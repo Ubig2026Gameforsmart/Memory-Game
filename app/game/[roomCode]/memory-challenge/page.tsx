@@ -7,7 +7,6 @@ import { Target } from "lucide-react"
 import { roomManager } from "@/lib/room-manager"
 import { useRoom } from "@/hooks/use-room"
 import { sessionManager } from "@/lib/supabase-session-manager"
-import { supabaseRoomManager } from "@/lib/supabase-room-manager"
 import { useTranslation } from "react-i18next"
 
 interface MemoryChallengePageProps {
@@ -196,21 +195,8 @@ export default function MemoryChallengePage({ params }: MemoryChallengePageProps
           }
         }
 
-        // Fallback: try to load from Supabase
-        if (playerId) {
-          try {
-            const supabaseProgress = await supabaseRoomManager.getPlayerGameProgress(params.roomCode, playerId)
-            if (supabaseProgress?.memoryProgress?.correct_matches > 0) {
-              console.log('[Memory Challenge] Loaded Supabase progress:', supabaseProgress.memoryProgress.correct_matches)
-              setCorrectMatches(supabaseProgress.memoryProgress.correct_matches)
-              return
-            }
-          } catch (error) {
-            console.error("[Memory Challenge] Error loading Supabase progress:", error)
-          }
-        }
-
-        // No saved progress - start fresh
+        // Fallback: No need to load memory progress from Supabase anymore
+        // We will rely on localStorage for persistence on refresh
         setCorrectMatches(0)
       } catch (error) {
         console.error("[Memory Challenge] Error loading progress:", error)
@@ -237,16 +223,16 @@ export default function MemoryChallengePage({ params }: MemoryChallengePageProps
           }
         }
 
-        // If localStorage doesn't have the data, check Supabase
+        // If localStorage doesn't have the data, check room data (Supabase A)
         if (playerId) {
-
-          const supabaseProgress = await supabaseRoomManager.getPlayerGameProgress(params.roomCode, playerId)
-
-          if (supabaseProgress && supabaseProgress.correct_answers >= 3) {
-
-            setHasAccess(true)
-            setLoading(false)
-            return
+          const currentRoom = await roomManager.getRoom(params.roomCode)
+          if (currentRoom) {
+            const currentP = currentRoom.players.find((p: any) => p.id === playerId)
+            if (currentP && (currentP.correctAnswers || 0) >= 3) {
+              setHasAccess(true)
+              setLoading(false)
+              return
+            }
           }
         }
 
@@ -361,19 +347,9 @@ export default function MemoryChallengePage({ params }: MemoryChallengePageProps
   const handleCorrectMatch = async () => {
     const newCount = correctMatches + 1
 
-    // Save progress to Supabase to prevent reset on refresh
-    if (playerId) {
-      try {
-        await supabaseRoomManager.updateGameProgress(params.roomCode, playerId, {
-          memoryProgress: {
-            correct_matches: newCount,
-            last_updated: new Date().toISOString()
-          }
-        })
-      } catch (error) {
-        console.error("[Memory Challenge] Error saving progress to Supabase:", error)
-      }
-    }
+    // Progress memory game sekarang hanya disimpan secara lokal (LocalStorage)
+    // Tidak lagi dikirim ke database untuk menghindari error RPC dan redundansi data
+
 
     // Fallback to localStorage
     localStorage.setItem(`memory-progress-${params.roomCode}`, newCount.toString())

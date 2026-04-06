@@ -265,7 +265,22 @@ function LeaderboardHostPageContent() {
   const champion = sortedPlayers[0]
 
   const handleRestart = async () => {
+    // 🔍 DIAGNOSTIC LOGGING
+    console.log('[Leaderboard] 🔄 Restart attempt:', {
+      roomExist: !!room,
+      hostIdExist: !!hostId,
+      quizId: room?.quizId,
+      quizTitle: room?.quizTitle,
+      isRestarting
+    })
+
     if (!room || !hostId || !room.quizId || !room.quizTitle || isRestarting) {
+      console.warn('[Leaderboard] ❌ Restart blocked: Missing critical data', {
+        room: !!room,
+        hostId,
+        quizId: room?.quizId,
+        quizTitle: room?.quizTitle
+      })
       return
     }
     setIsRestarting(true)
@@ -359,16 +374,14 @@ function LeaderboardHostPageContent() {
           }}
         >
           <div
-            className="w-14 h-14 flex items-center justify-center"
+            className="w-16 h-16 flex items-center justify-center transition-all active:translate-y-1 active:translate-x-1"
             style={{
-              background: '#533483',
-              border: '3px solid #3d2562',
-              borderRadius: '4px',
+              background: '#8b5cf6',
+              border: '4px solid black',
+              borderRadius: '0px',
               boxShadow: `
-                inset -2px -2px 0px #6b4a9e,
-                inset 2px 2px 0px #3d2562,
-                0 0 0 2px #2a1a3d,
-                4px 4px 0px rgba(0, 0, 0, 0.3)
+                4px 4px 0px black,
+                inset -4px -4px 0px rgba(0,0,0,0.2)
               `,
               imageRendering: 'pixelated',
             }}
@@ -395,16 +408,14 @@ function LeaderboardHostPageContent() {
           }}
         >
           <div
-            className="w-14 h-14 flex items-center justify-center"
+            className="w-16 h-16 flex items-center justify-center transition-all active:translate-y-1 active:translate-x-1"
             style={{
-              background: '#4a90e2',
-              border: '3px solid #2c5f8d',
-              borderRadius: '4px',
+              background: '#06b6d4',
+              border: '4px solid black',
+              borderRadius: '0px',
               boxShadow: `
-                inset -2px -2px 0px #6ba3e8,
-                inset 2px 2px 0px #2c5f8d,
-                0 0 0 2px #1a3d5f,
-                4px 4px 0px rgba(0, 0, 0, 0.3)
+                4px 4px 0px black,
+                inset -4px -4px 0px rgba(0,0,0,0.2)
               `,
               imageRendering: 'pixelated',
             }}
@@ -431,14 +442,12 @@ function LeaderboardHostPageContent() {
             onClick={() => router.push("/")}
             className="flex-1 py-3 flex items-center justify-center group transition-transform active:scale-95"
             style={{
-              background: '#533483',
-              border: '3px solid #3d2562',
-              borderRadius: '4px',
+              background: '#8b5cf6',
+              border: '4px solid black',
+              borderRadius: '0px',
               boxShadow: `
-                inset -2px -2px 0px #6b4a9e,
-                inset 2px 2px 0px #3d2562,
-                0 0 0 2px #2a1a3d,
-                4px 4px 0px rgba(0, 0, 0, 0.3)
+                4px 4px 0px black,
+                inset -4px -4px 0px rgba(0,0,0,0.2)
               `,
               imageRendering: 'pixelated',
             }}
@@ -453,14 +462,12 @@ function LeaderboardHostPageContent() {
             disabled={isRestarting || !room || !hostId || !room.quizId || !room.quizTitle}
             className="flex-1 py-3 flex items-center justify-center group transition-transform active:scale-95 disabled:opacity-50 disabled:grayscale"
             style={{
-              background: '#4a90e2',
-              border: '3px solid #2c5f8d',
-              borderRadius: '4px',
+              background: '#06b6d4',
+              border: '4px solid black',
+              borderRadius: '0px',
               boxShadow: `
-                inset -2px -2px 0px #6ba3e8,
-                inset 2px 2px 0px #2c5f8d,
-                0 0 0 2px #1a3d5f,
-                4px 4px 0px rgba(0, 0, 0, 0.3)
+                4px 4px 0px black,
+                inset -4px -4px 0px rgba(0,0,0,0.2)
               `,
               imageRendering: 'pixelated',
             }}

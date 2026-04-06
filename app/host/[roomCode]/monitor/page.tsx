@@ -10,6 +10,8 @@ import { useSynchronizedTimer } from "@/hooks/use-synchronized-timer"
 import { sessionManager } from "@/lib/supabase-session-manager"
 import { RobustGoogleAvatar } from "@/components/robust-google-avatar"
 import { useTranslation } from "react-i18next"
+import { supabasePlayers, isPlayersSupabaseConfigured } from "@/lib/supabase-players"
+import { supabase } from "@/lib/supabase"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -108,22 +110,19 @@ function MonitorPageContent() {
       const success = await roomManager.updateGameStatus(roomCode, "finished")
       console.log('[Monitor] updateGameStatus result (time up):', success)
 
-      // 🚀 OPTIMIZED: No delay - immediate broadcast and redirect
-      let broadcastChannel: BroadcastChannel | null = null
-      try {
-        if (typeof window !== 'undefined') {
-          broadcastChannel = new BroadcastChannel(`game-end-${roomCode}`)
-          broadcastChannel.postMessage({
-            type: 'game-ended',
-            roomCode: roomCode,
-            timestamp: Date.now()
-          })
+      // 🚀 SUPABASE BROADCAST: Immediate broadcast to all players/hosts
+      const client = isPlayersSupabaseConfigured() ? supabasePlayers : supabase;
+      const gameEndChannel = client.channel(`game-end-${roomCode}`)
+      
+      gameEndChannel.subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          gameEndChannel.send({ 
+            type: 'broadcast', 
+            event: 'game-ended', 
+            payload: { roomCode, timestamp: Date.now() } 
+          }).finally(() => client.removeChannel(gameEndChannel))
         }
-      } finally {
-        if (broadcastChannel) {
-          broadcastChannel.close()
-        }
-      }
+      })
 
       console.log('[Monitor] Redirecting to leaderboard (time up)...')
       window.location.href = `/host/leaderboad?roomCode=${roomCode}`
@@ -209,101 +208,66 @@ function MonitorPageContent() {
     verifyHostAccess()
   }, [params, router])
 
-  // 🚀 Broadcast listener for progress updates
+  // 🚀 Supabase Broadcast listener for cross-device REALTIME progress updates
   useEffect(() => {
-    if (roomCode) {
-      const broadcastChannel = new BroadcastChannel(`progress-update-${roomCode}`)
-      let lastUpdateTime = 0
+    if (!roomCode) return
 
-      broadcastChannel.onmessage = async (event) => {
-        if (event.data.type === 'progress-update') {
-          const now = Date.now()
-          if (now - lastUpdateTime < 100) return // 🚀 OPTIMIZED: Debounce 100ms (was 500ms)
-          lastUpdateTime = now
+    let lastUpdateTime = 0
+    const client = isPlayersSupabaseConfigured() ? supabasePlayers : supabase
+    const broadcastChannel = client.channel(`progress-${roomCode}`)
 
-          console.log('[Monitor] Received progress update from player:', event.data)
+    broadcastChannel.on("broadcast", { event: "progress-update" }, (event) => {
+      const payload = event.payload
+      const now = Date.now()
+      if (now - lastUpdateTime < 50) return // Debounce 50ms
+      lastUpdateTime = now
 
-          if (redirecting) {
-            console.log('[Monitor] Already redirecting, ignoring progress update')
-            return
-          }
+      console.log("[Monitor] 📡 Received broadcast progress:", payload?.playerId, payload?.updateData)
 
-          try {
-            // 🚀 CRITICAL: Get fresh room data and check for completion
-            const updatedRoom = await roomManager.getRoom(roomCode)
+      if (redirecting) return
 
-            if (updatedRoom?.status === 'finished') {
-              console.log('[Monitor] Game already finished, redirecting...')
-              setRedirecting(true)
-              window.location.href = `/host/leaderboad?roomCode=${roomCode}`
-              return
-            }
+      // 🚀 INSTANT LOCAL UI UPDATE: Apply directly to in-memory cache + trigger useRoom re-render
+      // Do NOT call getRoom() here — it would fetch stale DB data and overwrite this update
+      roomManager.updateLocalPlayerProgress(roomCode, payload.playerId, {
+        nickname: payload.updateData.nickname,
+        quizScore: payload.updateData.quizScore,
+        questionsAnswered: payload.updateData.questionsAnswered,
+        currentQuestion: payload.updateData.currentQuestion,
+        correctAnswers: payload.updateData.correctAnswers,
+      })
 
-            if (updatedRoom) {
-              setForceRefresh(prev => prev + 1)
+      // Force a re-render tick
+      setForceRefresh((prev) => prev + 1)
+    })
 
-              // 🚀 CRITICAL: Check if any player has completed
-              const nonHostPlayers = updatedRoom.players.filter(p => !p.isHost)
-              const totalQuestions = updatedRoom.questions?.length || updatedRoom.settings.questionCount || 10
+    broadcastChannel.subscribe((status) => {
+      console.log(`[Monitor] Broadcast channel progress-${roomCode} status:`, status)
+    })
 
-              const hasPlayerCompleted = nonHostPlayers.some(player => {
-                const answered = player.questionsAnswered || 0
-                return answered >= totalQuestions
-              })
-
-              if (hasPlayerCompleted && nonHostPlayers.length > 0 && !redirecting && !lastVerifiedCompletion) {
-                console.log('[Monitor] 🎮 Player completed! Triggering game end from broadcast...')
-
-                // 🚀 Trigger the auto-end game logic - NO DELAY
-                setLastVerifiedCompletion(true)
-                setRedirecting(true)
-
-                // 🚀 OPTIMIZED: Call updateGameStatus immediately - no delay needed
-                console.log('[Monitor] Host calling updateGameStatus to finish game...')
-                const success = await roomManager.updateGameStatus(roomCode, "finished")
-                console.log('[Monitor] updateGameStatus result:', success)
-
-                // 🚀 OPTIMIZED: Broadcast game end immediately
-                const gameEndChannel = new BroadcastChannel(`game-end-${roomCode}`)
-                gameEndChannel.postMessage({ type: 'game-ended', roomCode, timestamp: Date.now() })
-                gameEndChannel.close()
-
-                // 🚀 OPTIMIZED: Redirect immediately - no delay
-                console.log('[Monitor] Redirecting to leaderboard...')
-                window.location.href = `/host/leaderboad?roomCode=${roomCode}`
-              }
-            }
-          } catch (error) {
-            console.error('[Monitor] Error processing progress update:', error)
-          }
-        }
-      }
-
-      return () => {
-        broadcastChannel.close()
-      }
+    return () => {
+      client.removeChannel(broadcastChannel)
     }
-  }, [roomCode, redirecting, lastVerifiedCompletion])
+  }, [roomCode, redirecting])
 
-  // 🚀 CRITICAL: Listen for game-ended broadcast for immediate redirect
+
+  // 🚀 CRITICAL: Listen for Supabase game-ended broadcast for immediate cross-device redirect
   useEffect(() => {
     if (!roomCode || redirecting) return
 
-    const gameEndChannel = new BroadcastChannel(`game-end-${roomCode}`)
+    const client = isPlayersSupabaseConfigured() ? supabasePlayers : supabase;
+    const gameEndChannel = client.channel(`game-end-${roomCode}`)
 
-    gameEndChannel.onmessage = (event) => {
-      if (event.data.type === 'game-ended') {
-        console.log('[Monitor] Received game-ended broadcast, redirecting to leaderboard')
-        setRedirecting(true)
-        setLastVerifiedCompletion(true)
+    gameEndChannel.on('broadcast', { event: 'game-ended' }, (event) => {
+      console.log('[Monitor] Received Supabase game-ended broadcast, redirecting to leaderboard')
+      setRedirecting(true)
+      setLastVerifiedCompletion(true)
 
-        // Immediate redirect
-        window.location.href = `/host/leaderboad?roomCode=${roomCode}`
-      }
-    }
+      // Immediate redirect
+      window.location.href = `/host/leaderboad?roomCode=${roomCode}`
+    }).subscribe()
 
     return () => {
-      gameEndChannel.close()
+      client.removeChannel(gameEndChannel)
     }
   }, [roomCode, redirecting])
 
@@ -377,14 +341,19 @@ function MonitorPageContent() {
           const success = await roomManager.updateGameStatus(roomCode, "finished")
           console.log('[Monitor] updateGameStatus result:', success)
 
-          // Broadcast game end for same-browser windows
-          try {
-            const gameEndChannel = new BroadcastChannel(`game-end-${roomCode}`)
-            gameEndChannel.postMessage({ type: 'game-ended', roomCode, timestamp: Date.now() })
-            gameEndChannel.close()
-          } catch (e) {
-            // BroadcastChannel might not be supported or fail
-          }
+          // 🚀 SUPABASE BROADCAST: Immediate broadcast to all players/hosts
+          const client = isPlayersSupabaseConfigured() ? supabasePlayers : supabase;
+          const gameEndChannel = client.channel(`game-end-${roomCode}`)
+          
+          gameEndChannel.subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+              gameEndChannel.send({ 
+                type: 'broadcast', 
+                event: 'game-ended', 
+                payload: { roomCode, timestamp: Date.now() } 
+              }).finally(() => client.removeChannel(gameEndChannel))
+            }
+          })
 
           // Redirect to leaderboard
           console.log('[Monitor] Redirecting to leaderboard (from polling)...')
@@ -581,14 +550,19 @@ function MonitorPageContent() {
 
             // 🚀 OPTIMIZED: No delay - immediate broadcast and redirect
 
-            // Broadcast game end untuk memberitahu semua player
-            const broadcastChannel = new BroadcastChannel(`game-end-${roomCode}`)
-            broadcastChannel.postMessage({
-              type: 'game-ended',
-              roomCode: roomCode,
-              timestamp: Date.now()
+            // 🚀 SUPABASE BROADCAST: Immediate broadcast to all players/hosts
+            const client = isPlayersSupabaseConfigured() ? supabasePlayers : supabase;
+            const gameEndChannel = client.channel(`game-end-${roomCode}`)
+            
+            gameEndChannel.subscribe((status) => {
+              if (status === 'SUBSCRIBED') {
+                gameEndChannel.send({ 
+                  type: 'broadcast', 
+                  event: 'game-ended', 
+                  payload: { roomCode, timestamp: Date.now() } 
+                }).finally(() => client.removeChannel(gameEndChannel))
+              }
             })
-            broadcastChannel.close()
 
             // 🚀 OPTIMIZED: Redirect immediately - no delay
             console.log('[Monitor] Data synced, redirecting to leaderboard...')
@@ -659,9 +633,19 @@ function MonitorPageContent() {
         // Small delay to ensure Supabase write is committed
         await new Promise(resolve => setTimeout(resolve, 500))
 
-        const broadcastChannel = new BroadcastChannel(`game-end-${roomCode}`)
-        broadcastChannel.postMessage({ type: 'game-ended', roomCode, timestamp: Date.now() })
-        broadcastChannel.close()
+        // 🚀 SUPABASE BROADCAST: Immediate broadcast to all players/hosts
+        const client = isPlayersSupabaseConfigured() ? supabasePlayers : supabase;
+        const gameEndChannel = client.channel(`game-end-${roomCode}`)
+        
+        gameEndChannel.subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            gameEndChannel.send({ 
+              type: 'broadcast', 
+              event: 'game-ended', 
+              payload: { roomCode, timestamp: Date.now() } 
+            }).finally(() => client.removeChannel(gameEndChannel))
+          }
+        })
 
         console.log('[Monitor] Redirecting to leaderboard (manual end)...')
 
