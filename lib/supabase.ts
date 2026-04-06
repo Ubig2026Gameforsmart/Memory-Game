@@ -61,6 +61,7 @@ export interface Quiz {
   category: 'General' | 'Science' | 'Mathematics' | 'History' | 'Geography' | 'Language' | 'Technology' | 'Sports' | 'Entertainment' | 'Business'
   questions: QuestionData[]
   metadata?: QuizMetadata
+  played?: number
   created_at: string
   updated_at: string
 }

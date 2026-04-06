@@ -107,8 +107,11 @@ export default function StressTestPage() {
                 id: sessionB.id,
                 game_pin: sessionB.game_pin,
                 status: sessionB.status,
-                settings: sessionB.settings,
-                questions: sessionB.questions || []
+                settings: {
+                    questionCount: sessionB.question_limit || 10,
+                    totalTimeLimit: sessionB.total_time_minutes ? sessionB.total_time_minutes * 60 : 5 * 60
+                },
+                questions: sessionB.current_questions || []
             };
         }
 
@@ -138,7 +141,6 @@ export default function StressTestPage() {
             game_pin: sessionA.game_pin,
             host_id: sessionA.host_id,
             quiz_id: sessionA.quiz_id,
-            quiz_title: sessionA.quiz_detail?.title || 'Quiz',
             settings: {
                 questionCount,
                 totalTimeLimit: (sessionA.total_time_minutes || 5) * 60
@@ -161,8 +163,11 @@ export default function StressTestPage() {
             id: newSessionB.id,
             game_pin: newSessionB.game_pin,
             status: sessionA.status,
-            settings: newSessionB.settings,
-            questions: newSessionB.questions || []
+            settings: {
+                questionCount: newSessionB.question_limit || 10,
+                totalTimeLimit: newSessionB.total_time_minutes ? newSessionB.total_time_minutes * 60 : 5 * 60
+            },
+            questions: newSessionB.current_questions || []
         };
     };
 
@@ -300,7 +305,9 @@ export default function StressTestPage() {
                     await participantsApi.addAnswer(
                         roomCode,
                         user.id,
-                        answerData
+                        answerData,
+                        localScore,
+                        qIndex + 1
                     );
 
                     // Check again after DB operation
@@ -369,8 +376,8 @@ export default function StressTestPage() {
 
                                 // Update or add bot participants AND build responses
                                 for (const bot of allParticipants) {
-                                    // Skip host
-                                    if (bot.is_host) continue;
+                                    // Skip host (GameParticipant doesn't have is_host in SupabasePlayers anymore, but we'll assume bots aren't hosts)
+                                    // if (bot.is_host) continue;
 
                                     // Participant data
                                     const existingIndex = existingParticipants.findIndex(
@@ -379,11 +386,11 @@ export default function StressTestPage() {
                                     const botData = {
                                         id: bot.id,
                                         nickname: bot.nickname,
-                                        avatar: bot.avatar,
-                                        is_host: bot.is_host,
+                                        avatar: '/avatars/default.webp',
+                                        is_host: false,
                                         is_ready: true,
                                         score: bot.score,
-                                        questions_answered: bot.questions_answered,
+                                        questions_answered: bot.current_question,
                                         joined_at: bot.joined_at
                                     };
                                     if (existingIndex >= 0) {

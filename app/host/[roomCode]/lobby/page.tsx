@@ -42,7 +42,7 @@ function LobbyPageContent() {
   const [playerToKick, setPlayerToKick] = useState<any>(null)
   const lastUpdateTimeRef = useRef<number>(0)
   const { toast } = useToast()
-  const { room, loading } = useRoom(roomCode || "")
+  const { room, setRoom, loading } = useRoom(roomCode || "")
 
   const currentRoom = room
 
@@ -308,11 +308,13 @@ function LobbyPageContent() {
     initializeHostSession()
   }, [params, router])
 
+  // Update local gameStarted state when server room status changes
   useEffect(() => {
-    if (currentRoom?.gameStarted) {
+    // If room is in countdown or quiz status, it means game has officially started
+    if (currentRoom?.gameStarted || currentRoom?.status === "countdown" || currentRoom?.status === "quiz") {
       setGameStarted(true)
     }
-  }, [currentRoom, roomCode, hostId, gameStarted])
+  }, [currentRoom?.gameStarted, currentRoom?.status])
 
   const shareUrl = roomCode && typeof window !== 'undefined' ? `${window.location.origin}/join/${roomCode}` : ""
   const joinUrl = shareUrl
@@ -436,9 +438,9 @@ function LobbyPageContent() {
       const countdownSuccess = await roomManager.startCountdown(roomCode, hostId, 10)
 
       if (countdownSuccess) {
-        setGameStarted(true)
-
         const countdownStartTime = new Date().toISOString()
+        setGameStarted(true) // Immediate feedback for host
+
         const updatedRoom = {
           ...currentRoom,
           status: "countdown" as const,
@@ -446,16 +448,35 @@ function LobbyPageContent() {
           countdownDuration: 10
         }
 
+        // 🔧 SYNC FIX: Update local room state immediately to show CountdownTimer
+        // This avoids 1-2 second delay from Supabase polling
+        setRoom(updatedRoom)
+
 
         if (typeof window !== 'undefined') {
-          const broadcastChannel = new BroadcastChannel(`countdown-${roomCode}`)
-          broadcastChannel.postMessage({
-            type: 'countdown-started',
-            room: updatedRoom,
-            countdownStartTime: countdownStartTime,
-            countdownDuration: 10
-          })
-          broadcastChannel.close()
+          try {
+            // Use multiple channels to ensure players in both rooms receive it
+            const countdownChannel = new BroadcastChannel(`countdown-${roomCode}`)
+            const roomChannel = new BroadcastChannel(`room-${roomCode}`)
+            
+            const message = {
+              type: 'countdown-started',
+              room: updatedRoom,
+              countdownStartTime: countdownStartTime,
+              countdownDuration: 10
+            }
+            
+            countdownChannel.postMessage(message)
+            roomChannel.postMessage(message)
+            
+            // Allow a small window for browser to send it before closing
+            setTimeout(() => {
+              countdownChannel.close()
+              roomChannel.close()
+            }, 100)
+          } catch (e) {
+            console.error('[Lobby] Broadcast failed:', e)
+          }
         }
 
         setTimeout(() => { }, 100)
@@ -657,7 +678,7 @@ function LobbyPageContent() {
                     <div className="w-4 h-4 sm:w-5 sm:h-5 bg-blue-500 rounded-full flex items-center justify-center">
                       <span className="text-white text-xs">⏱️</span>
                     </div>
-                    <span className="text-blue-700 font-medium text-xs sm:text-sm">
+                    <span className="text-blue-700 font-bold text-[10px] pixel-font">
                       {currentRoom?.settings.totalTimeLimit || 30}:00
                     </span>
                   </div>
@@ -666,23 +687,23 @@ function LobbyPageContent() {
                     <div className="w-4 h-4 sm:w-5 sm:h-5 bg-green-500 rounded-full flex items-center justify-center">
                       <span className="text-white text-xs">❓</span>
                     </div>
-                    <span className="text-green-700 font-medium text-xs sm:text-sm">
+                    <span className="text-green-700 font-bold text-[10px] pixel-font">
                       {currentRoom?.settings.questionCount || 10} {t('lobby.questions')}
                     </span>
                   </div>
                 </div>
 
-                <div className="bg-white border-2 border-black rounded pt-2 pb-3 sm:pt-3 sm:pb-4 md:pt-4 md:pb-6 px-3 sm:px-4 md:px-6 pixel-room-code relative">
+                <div className="bg-white border-2 border-black rounded py-2 px-2 pixel-room-code relative flex items-center justify-center min-h-[100px] sm:min-h-[120px] overflow-hidden">
                   <button
                     onClick={copyRoomCode}
                     aria-label="Copy room code"
-                    className={`absolute bottom-2 right-2 sm:top-3 sm:right-3 md:top-4 md:right-4 w-5 h-5 sm:w-6 sm:h-6 md:w-8 md:h-8 rounded border-2 border-black flex items-center justify-center ${copiedCode ? "bg-green-500 text-white" : "bg-gray-200 hover:bg-gray-300"}`}
+                    className={`absolute right-1 sm:right-2 top-1/2 -translate-y-1/2 w-10 h-10 sm:w-12 sm:h-12 rounded border-2 border-black flex items-center justify-center transition-all active:scale-95 z-30 ${copiedCode ? "bg-green-500 text-white" : "bg-gray-200 hover:bg-gray-300"}`}
                   >
-                    {copiedCode ? <span className="font-bold text-xs sm:text-sm md:text-lg">✓</span> : <Copy className="h-3 w-3 sm:h-4 sm:w-4 md:h-6 md:w-6" />}
+                    {copiedCode ? <span className="font-bold text-sm sm:text-base md:text-xl">✓</span> : <Copy className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6" />}
                   </button>
 
-                  <div className="text-center pt-0 px-8 sm:px-12 md:px-16">
-                    <div className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-black font-mono text-black room-code-text break-all leading-tight">
+                  <div className="text-center w-full pr-12 sm:pr-14 pl-2">
+                    <div className="pixel-font text-black font-bold !text-[30px] sm:!text-[50px] md:!text-[60px] lg:!text-[70px] xl:!text-[75px] leading-none whitespace-nowrap tracking-tighter">
                       {roomCode}
                     </div>
                   </div>
@@ -711,7 +732,7 @@ function LobbyPageContent() {
 
                         <div className="w-full">
                           <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-2 sm:p-3 border-2 border-black">
-                            <span className="text-xs sm:text-sm font-mono break-all flex-1 text-gray-900">{joinUrl}</span>
+                            <span className="text-[10px] pixel-font break-all flex-1 text-gray-900 leading-relaxed font-bold">{joinUrl}</span>
                             <button
                               onClick={copyShareLink}
                               className="p-2 hover:bg-gray-200 rounded transition-colors shrink-0 border border-black flex items-center justify-center"
@@ -778,7 +799,7 @@ function LobbyPageContent() {
                     <div className={`inline-block bg-white border border-black rounded px-2 py-1 transition-all duration-500 ${playerCountChanged ? 'animate-pulse bg-green-100 border-green-400' :
                       playerLeft ? 'animate-pulse bg-red-100 border-red-400' : ''
                       }`}>
-                      <span className="text-black font-bold text-xs sm:text-sm pixel-font-sm">
+                      <span className="text-black font-bold text-[10px] pixel-font">
                         {playerCountChanged ? '🎉 ' : playerLeft ? '👋 ' : ''}{t('lobby.players')} ({currentRoom?.players.length || 0})
                       </span>
                     </div>
@@ -795,14 +816,14 @@ function LobbyPageContent() {
                           className="relative w-full sm:w-auto bg-linear-to-br from-purple-500 to-purple-600 border-2 border-black rounded-lg text-white hover:bg-linear-to-br hover:from-purple-400 hover:to-purple-500 transform hover:scale-105 transition-all duration-200 font-bold px-4 sm:px-6 py-2 sm:py-3 flex items-center justify-center gap-2 sm:gap-3 text-sm sm:text-lg tracking-wide disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none min-h-[44px]"
                         >
                           <Play className="h-3 w-3 sm:h-4 sm:w-4" />
-                          <span className="pixel-font-sm">{t('lobby.startGame')}</span>
+                          <span className="pixel-font text-xs sm:text-sm">{t('lobby.startGame')}</span>
                         </button>
                       </div>
                     </div>
                   )}
                   {gameStarted && (
                     <div className="bg-yellow-400 border-2 border-black rounded px-3 py-1">
-                      <span className="text-black font-bold text-xs pixel-font-sm">{t('lobby.gameStarted')}</span>
+                      <span className="text-black font-bold text-[10px] pixel-font">{t('lobby.gameStarted')}</span>
                     </div>
                   )}
                 </div>
@@ -813,8 +834,8 @@ function LobbyPageContent() {
                       <Users className="h-6 w-6 sm:h-8 sm:w-8 text-black" />
                     </div>
                     <div className="bg-white border-2 border-black rounded px-3 sm:px-4 py-2 inline-block">
-                      <p className="text-black font-bold text-xs sm:text-sm pixel-font-sm">{t('lobby.noPlayersYet')}</p>
-                      <p className="text-black text-xs pixel-font-sm">{t('lobby.shareRoomCode')}</p>
+                      <p className="text-black font-bold text-[10px] sm:text-xs pixel-font mb-2">{t('lobby.noPlayersYet')}</p>
+                      <p className="text-black text-[8px] sm:text-[9px] pixel-font opacity-70 leading-none">{t('lobby.shareRoomCode')}</p>
                     </div>
                   </div>
                 ) : (
@@ -844,7 +865,7 @@ function LobbyPageContent() {
                             {/* Name with Tooltip */}
                             <div className="text-center w-full relative group">
                               <div
-                                className="font-bold text-black pixel-font-sm text-xs leading-tight player-username truncate max-w-full px-1 cursor-pointer group-hover:text-purple-600 transition-colors"
+                                className="font-bold text-black pixel-font text-[8px] sm:text-[9px] leading-tight player-username truncate max-w-full px-1 cursor-pointer group-hover:text-purple-600 transition-colors"
                               >
                                 {player.nickname.toUpperCase()}
                               </div>
@@ -878,7 +899,7 @@ function LobbyPageContent() {
                         </div>
 
                         <div className="bg-white border-2 border-black rounded px-2 sm:px-3 py-1">
-                          <span className="text-black font-bold text-xs sm:text-sm pixel-font-sm">
+                          <span className="text-black font-bold text-[10px] pixel-font">
                             {currentPage + 1} / {totalPages}
                           </span>
                         </div>
@@ -890,7 +911,7 @@ function LobbyPageContent() {
                             disabled={currentPage === totalPages - 1}
                             className="relative bg-linear-to-br from-gray-500 to-gray-600 border-2 border-black rounded-lg text-white hover:bg-linear-to-br hover:from-gray-400 hover:to-gray-500 transform hover:scale-105 transition-all duration-200 font-bold disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] px-3 sm:px-4"
                           >
-                            <span className="pixel-font-sm text-xs sm:text-sm">NEXT</span>
+                            <span className="pixel-font text-[10px]">NEXT</span>
                             <ChevronRight className="h-3 w-3 sm:h-4 sm:w-4 ml-1" />
                           </Button>
                         </div>
@@ -1046,7 +1067,7 @@ export default function LobbyPage() {
                 <Users className="h-8 w-8 text-black animate-spin" />
               </div>
               <h3 className="text-lg font-bold text-white mb-2 pixel-font">LOADING...</h3>
-              <p className="text-white/80 pixel-font-sm">PREPARING LOBBY</p>
+              <p className="text-[10px] text-white/80 pixel-font">PREPARING LOBBY</p>
             </div>
           </div>
         </div>

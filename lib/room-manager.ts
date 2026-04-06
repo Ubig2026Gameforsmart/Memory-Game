@@ -36,8 +36,12 @@ class RoomManager {
     return await supabaseRoomManager.rejoinRoom(roomCode, player, userId)
   }
 
-  async updatePlayerScore(roomCode: string, playerId: string, quizScore?: number, questionsAnswered?: number): Promise<boolean> {
-    return await supabaseRoomManager.updatePlayerScore(roomCode, playerId, quizScore, questionsAnswered)
+  async updatePlayerScore(roomCode: string, playerId: string, quizScore?: number, questionsAnswered?: number, currentQuestion?: number, correctAnswers?: number): Promise<boolean> {
+    return await supabaseRoomManager.updatePlayerScore(roomCode, playerId, quizScore, questionsAnswered, currentQuestion, correctAnswers)
+  }
+
+  updateLocalPlayerProgress(roomCode: string, playerId: string, updateData: { nickname?: string, quizScore?: number, questionsAnswered?: number, currentQuestion?: number, correctAnswers?: number, answers?: any[] }) {
+    return supabaseRoomManager.updateLocalPlayerProgress(roomCode, playerId, updateData)
   }
 
   async startCountdown(roomCode: string, hostId: string, duration: number = 10): Promise<boolean> {

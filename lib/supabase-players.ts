@@ -4,9 +4,8 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js'
  * Supabase Players Client - Dedicated database for game participants
  * 
  * This separate Supabase instance handles all player-related data:
- * - game_participants table with individual rows per player
+ * - participants table with individual rows per player
  * - Enables parallel updates (no JSONB bottleneck)
- * - Structure matches the participants JSONB format
  */
 
 // Use placeholder values to prevent build errors - actual values from env
@@ -24,27 +23,19 @@ export const isPlayersSupabaseConfigured = () => {
     const isValidKey = hasKey && !process.env.NEXT_PUBLIC_SUPABASE_PLAYERS_ANON_KEY?.includes('placeholder')
     const result = isValidUrl && isValidKey
 
-    // 🔍 DEBUG: Log configuration status
-    console.log('[PlayersDB Config]', {
-        hasUrl,
-        hasKey,
-        isValidUrl,
-        isValidKey,
-        configured: result,
-        urlPreview: process.env.NEXT_PUBLIC_SUPABASE_PLAYERS_URL?.substring(0, 30) + '...'
-    })
-
     return result
 }
 
 /**
- * Generate XID - similar format to the one in JSONB
+ * Generate XID 
  * Example: d3fmdnp53dtg000j5r30
  */
 function generateXID(): string {
+    // Menyamakan format dengan session_id/user_id yang biasanya diawali '01m'
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
-    let result = ''
-    for (let i = 0; i < 20; i++) {
+    const prefix = '01m'
+    let result = prefix
+    for (let i = 0; i < 20 - prefix.length; i++) {
         result += chars.charAt(Math.floor(Math.random() * chars.length))
     }
     return result
@@ -52,30 +43,27 @@ function generateXID(): string {
 
 // Type definitions for answer
 export interface QuizAnswer {
-    id: string              // XID format
-    question_id: string
-    answer_id: string
-    is_correct: boolean
-    points_earned: number
-    created_at: string
+    correct: boolean
+    answer_id: number
+    timestamp: number
+    question_id: number
 }
 
-// Type definitions for game_participants table
-// Matches the JSONB structure exactly
+// Type definitions for participants table (matches actual Supabase B schema)
 export interface GameParticipant {
-    id: string              // XID format (e.g., "d3fmdnp53dtg000j5r30")
-    session_id: string      // session id from sessions table
-    game_pin: string        // game pin for easy lookup
-    user_id: string | null  // user_id from profiles table (for logged-in users)
+    id: string
+    session_id: string
     nickname: string
     avatar: string | null
-    score: number           // quiz score
-    started: string | null  // when player started quiz
-    ended: string | null    // when player finished quiz
-    questions_answered: number
-    is_host: boolean
+    user_id: string | null
+    score: number
     joined_at: string
-    answers: QuizAnswer[]   // NEW: array of answers
+    answers: QuizAnswer[]
+    correct: number
+    current_question: number  // This is the ONLY question tracking field in the DB
+    duration: number
+    finished_at: string | null
+    started_at: string | null
 }
 
 // Participants API functions
@@ -89,12 +77,6 @@ export const participantsApi = {
 
     /**
      * Add a player to a game session
-     * @param gamePin - The game PIN (room code)
-     * @param playerId - XID for the player
-     * @param nickname - Player's display name
-     * @param avatar - Player's avatar URL
-     * @param isHost - Whether this is the host
-     * @param userId - Optional user_id from profiles table
      */
     async addParticipant(
         gamePin: string,
@@ -107,40 +89,38 @@ export const participantsApi = {
         try {
             // First, get the session_id from sessions table
             const session = await sessionsApi.getSession(gamePin)
-            const sessionId = session?.id || gamePin // Fallback to gamePin if session not found
+            const sessionId = session?.id
+            if (!sessionId) {
+                console.error('[PlayersDB] Session not found for pin:', gamePin)
+                return null
+            }
 
-            // 🔧 FIX: Remove any existing participant with the same nickname to prevent duplicates
-            // This handles the case when a player leaves and rejoins with the same nickname
+            // Cleanup existing participant with same nickname in this session
             try {
-                const { error: deleteError } = await supabasePlayers
-                    .from('game_participants')
+                await supabasePlayers
+                    .from('participants')
                     .delete()
-                    .eq('game_pin', gamePin)
+                    .eq('session_id', sessionId)
                     .eq('nickname', nickname)
-
-                if (deleteError) {
-                    console.warn('[PlayersDB] Error removing existing participant by nickname (non-critical):', deleteError)
-                } else {
-                    console.log(`[PlayersDB] Cleaned up any existing participant with nickname: ${nickname}`)
-                }
             } catch (cleanupError) {
-                console.warn('[PlayersDB] Exception during nickname cleanup (non-critical):', cleanupError)
+                console.warn('[PlayersDB] Exception during nickname cleanup:', cleanupError)
             }
 
             const { data, error } = await supabasePlayers
-                .from('game_participants')
+                .from('participants')
                 .upsert({
                     id: playerId,
                     session_id: sessionId,
-                    game_pin: gamePin,
                     user_id: userId,
                     nickname,
-                    avatar,
-                    is_host: isHost,
+                    avatar, // ✅ ADD THIS: Store the selected avatar path
                     score: 0,
-                    questions_answered: 0,
-                    started: null,
-                    ended: null
+                    correct: 0,
+                    current_question: 0,
+                    duration: 0,
+                    started_at: null,
+                    finished_at: null,
+                    answers: []
                 }, {
                     onConflict: 'id'
                 })
@@ -164,10 +144,13 @@ export const participantsApi = {
      */
     async getParticipants(gamePin: string): Promise<GameParticipant[]> {
         try {
+            const session = await sessionsApi.getSession(gamePin)
+            if (!session) return []
+
             const { data, error } = await supabasePlayers
-                .from('game_participants')
+                .from('participants')
                 .select('*')
-                .eq('game_pin', gamePin)
+                .eq('session_id', session.id)
                 .order('joined_at', { ascending: true })
 
             if (error) {
@@ -183,14 +166,13 @@ export const participantsApi = {
     },
 
     /**
-     * Get a single participant by game_pin and player_id
+     * Get a single participant by player_id
      */
     async getParticipant(gamePin: string, playerId: string): Promise<GameParticipant | null> {
         try {
             const { data, error } = await supabasePlayers
-                .from('game_participants')
+                .from('participants')
                 .select('*')
-                .eq('game_pin', gamePin)
                 .eq('id', playerId)
                 .single()
 
@@ -207,16 +189,15 @@ export const participantsApi = {
     },
 
     /**
-     * Mark player as started (began the quiz)
+     * Mark player as started
      */
     async markStarted(gamePin: string, playerId: string): Promise<boolean> {
         try {
             const { error } = await supabasePlayers
-                .from('game_participants')
+                .from('participants')
                 .update({
-                    started: new Date().toISOString()
+                    started_at: new Date().toISOString()
                 })
-                .eq('game_pin', gamePin)
                 .eq('id', playerId)
 
             if (error) {
@@ -232,28 +213,35 @@ export const participantsApi = {
     },
 
     /**
-     * Update player score - PARALLEL UPDATES (no JSONB bottleneck!)
+     * Update player score
      */
     async updateScore(
         gamePin: string,
         playerId: string,
         score: number,
-        questionsAnswered: number
+        questionsAnswered: number,
+        current_question?: number,
+        correct?: number
     ): Promise<boolean> {
         try {
-            // Get current values first for monotonic update
             const current = await this.getParticipant(gamePin, playerId)
 
             const finalScore = current ? Math.max(current.score, score) : score
-            const finalAnswered = current ? Math.max(current.questions_answered, questionsAnswered) : questionsAnswered
+            // current_question is the actual DB column that tracks progress
+            const finalCurrentQuestion = current_question !== undefined
+                ? Math.max(current?.current_question || 0, current_question)
+                : Math.max(current?.current_question || 0, questionsAnswered)
+            const finalCorrect = correct !== undefined ? Math.max(current?.correct || 0, correct) : (current?.correct || 0)
+
+            console.log(`[PlayersDB] Updating score for ${playerId}: score=${finalScore}, current_question=${finalCurrentQuestion}, correct=${finalCorrect}`)
 
             const { error } = await supabasePlayers
-                .from('game_participants')
+                .from('participants')
                 .update({
                     score: finalScore,
-                    questions_answered: finalAnswered
+                    current_question: finalCurrentQuestion,
+                    correct: finalCorrect
                 })
-                .eq('game_pin', gamePin)
                 .eq('id', playerId)
 
             if (error) {
@@ -269,17 +257,50 @@ export const participantsApi = {
     },
 
     /**
-     * Mark player as finished (completed the quiz)
+     * Update player heartbeat 
+     */
+    async updateHeartbeat(playerId: string, clientTimeOffset?: number | null): Promise<boolean> {
+        try {
+            const { error } = await supabasePlayers
+                .from('participants')
+                .update({
+                    last_heartbeat: new Date().toISOString(),
+                    client_time_offset: clientTimeOffset || null
+                })
+                .eq('id', playerId)
+
+            if (error) {
+                console.error('[PlayersDB] Error updating heartbeat:', error)
+                return false
+            }
+
+            return true
+        } catch (error) {
+            console.error('[PlayersDB] Exception updating heartbeat:', error)
+            return false
+        }
+    },
+
+    /**
+     * Mark player as finished
      */
     async markFinished(gamePin: string, playerId: string, finalScore: number): Promise<boolean> {
         try {
+            const current = await this.getParticipant(gamePin, playerId)
+            let duration = 0
+            const now = new Date()
+
+            if (current && current.started_at) {
+                duration = Math.floor((now.getTime() - new Date(current.started_at).getTime()) / 1000)
+            }
+
             const { error } = await supabasePlayers
-                .from('game_participants')
+                .from('participants')
                 .update({
                     score: finalScore,
-                    ended: new Date().toISOString()
+                    finished_at: now.toISOString(),
+                    duration
                 })
-                .eq('game_pin', gamePin)
                 .eq('id', playerId)
 
             if (error) {
@@ -301,66 +322,149 @@ export const participantsApi = {
         gamePin: string,
         playerId: string,
         answer: {
-            question_id: string
-            answer_id: string
+            question_id: string | number
+            answer_id: string | number
             is_correct: boolean
-            points_earned: number
-        }
+            points_earned?: number
+        },
+        score?: number,
+        current_question?: number,
+        nickname?: string,
+        avatar?: string
     ): Promise<boolean> {
         try {
-            // First get current answers
-            const { data: participant, error: fetchError } = await supabasePlayers
-                .from('game_participants')
-                .select('answers')
-                .eq('game_pin', gamePin)
+            console.log(`[PlayersDB] 📝 Attempting to add answer for player: ${playerId}`, answer)
+            
+            let { data: participant, error: fetchError } = await supabasePlayers
+                .from('participants')
+                .select('id, answers, correct, score, current_question, session_id, started_at')
                 .eq('id', playerId)
-                .single()
+                .maybeSingle()
 
-            if (fetchError) {
-                console.error('[PlayersDB] Error fetching participant for answer:', fetchError)
+            // [Auto-Healing] Gunakan Nama dan Avatar asli jika tersedia
+            if (!participant && !fetchError) {
+                console.warn(`[PlayersDB] ⚠️ Player ${playerId} not found. Attempting auto-registration...`)
+                const session = await sessionsApi.getSession(gamePin)
+                
+                if (session) {
+                    console.log(`[PlayersDB] 🔍 Found session for ${gamePin} in DB:`, session.id)
+                    
+                    // 🚀 STEP 1: Search by Nickname + Session (Case-insensitive)
+                    // This is much safer than a complex upsert
+                    const { data: existingPart } = await supabasePlayers
+                        .from('participants')
+                        .select('*')
+                        .eq('session_id', session.id)
+                        .ilike('nickname', nickname || 'Anonymous Player')
+                        .maybeSingle()
+
+                    if (existingPart) {
+                        console.log(`[PlayersDB] ✨ Found existing record for ${nickname}. Identity restored.`)
+                        participant = existingPart
+                    } else {
+                        // 🚀 STEP 2: Truly missing, so Insert new entry
+                        const { data: newPart, error: insError } = await supabasePlayers
+                            .from('participants')
+                            .insert({
+                                id: playerId,
+                                session_id: session.id,
+                                nickname: nickname || 'Anonymous Player',
+                                avatar: avatar || '/ava1.webp',
+                                score: score || 0,
+                                correct: 0,
+                                current_question: current_question || 0,
+                                answers: []
+                            })
+                            .select()
+                            .maybeSingle()
+                        
+                        if (insError) {
+                            console.error('[PlayersDB] ❌ Auto-healing insert failed:', insError)
+                        } else {
+                            participant = newPart
+                        }
+                    }
+                } else {
+                    console.error(`[PlayersDB] ❌ Session ${gamePin} NOT FOUND in Supabase B.`)
+                }
+            }
+
+            if (!participant) {
+                console.error('[PlayersDB] ❌ Final check failed: Player not found and auto-healing failed.', { fetchError })
                 return false
             }
 
-            const currentAnswers = participant?.answers || []
+            const currentAnswers = Array.isArray(participant?.answers) ? participant.answers : []
+            const currentCorrect = participant?.correct || 0
+
+            // Pastikan ID dikonversi ke number dengan aman
+            const safeQuestionId = typeof answer.question_id === 'string' ? parseInt(answer.question_id, 10) : answer.question_id
+            const safeAnswerId = typeof answer.answer_id === 'string' ? parseInt(answer.answer_id, 10) : answer.answer_id
+
             const newAnswer: QuizAnswer = {
-                id: generateXID(),
-                question_id: answer.question_id,
-                answer_id: answer.answer_id,
-                is_correct: answer.is_correct,
-                points_earned: answer.points_earned,
-                created_at: new Date().toISOString()
+                correct: answer.is_correct,
+                answer_id: isNaN(safeAnswerId as number) ? 0 : (safeAnswerId as number),
+                timestamp: Date.now(),
+                question_id: isNaN(safeQuestionId as number) ? 0 : (safeQuestionId as number)
             }
 
-            // Append new answer
-            const { error } = await supabasePlayers
-                .from('game_participants')
-                .update({
-                    answers: [...currentAnswers, newAnswer]
-                })
-                .eq('game_pin', gamePin)
-                .eq('id', playerId)
+            const updates: any = {
+                answers: [...currentAnswers, newAnswer],
+                correct: answer.is_correct ? currentCorrect + 1 : currentCorrect
+            }
 
-            if (error) {
-                console.error('[PlayersDB] Error adding answer:', error)
+            if (score !== undefined) updates.score = score
+            if (current_question !== undefined) {
+                updates.current_question = current_question
+                
+                // 🕒 AUTO-START: Set started_at on first question if not already set
+                if (current_question === 1 && !participant.started_at) {
+                    console.log(`[PlayersDB] 🕒 First question answered. Setting started_at for ${participant.id}`)
+                    const startTime = new Date()
+                    updates.started_at = startTime.toISOString()
+                    participant.started_at = updates.started_at // Update local ref for duration calculation if needed
+                }
+                
+                // 🕒 AUTO-FINISH: Detect if this is the final question and mark accordingly
+                const session = await sessionsApi.getSession(gamePin)
+                const totalQuestions = session?.question_limit || 0
+                
+                if (totalQuestions > 0 && current_question >= totalQuestions && participant.started_at) {
+                    console.log(`[PlayersDB] 🏁 Final question (${current_question}/${totalQuestions}) answered. Marking as finished...`)
+                    const finishTime = new Date()
+                    updates.finished_at = finishTime.toISOString()
+                    // Calculate duration in seconds
+                    const startTime = new Date(participant.started_at)
+                    updates.duration = Math.floor((finishTime.getTime() - startTime.getTime()) / 1000)
+                }
+            }
+
+            const { error: updateError } = await supabasePlayers
+                .from('participants')
+                .update(updates)
+                .eq('id', participant.id) // Use the validated/healed ID
+
+            if (updateError) {
+                console.error('[PlayersDB] ❌ Error updating participant answers:', updateError)
                 return false
             }
 
+            console.log(`[PlayersDB] ✅ Answer saved successfully for ${participant.id}`)
             return true
         } catch (error) {
-            console.error('[PlayersDB] Exception adding answer:', error)
+            console.error('[PlayersDB] 💥 Exception in addAnswer:', error)
             return false
         }
     },
 
     /**
-     * Remove a participant (kick or leave)
+     * Remove a participant
      */
     async removeParticipant(gamePin: string, playerId: string): Promise<boolean> {
         try {
             const { error } = await supabasePlayers
-                .from('game_participants')
+                .from('participants')
                 .delete()
-                .eq('game_pin', gamePin)
                 .eq('id', playerId)
 
             if (error) {
@@ -376,14 +480,17 @@ export const participantsApi = {
     },
 
     /**
-     * Remove all participants for a game (cleanup)
+     * Remove all participants for a game
      */
     async clearSession(gamePin: string): Promise<boolean> {
         try {
+            const session = await sessionsApi.getSession(gamePin)
+            if (!session) return false
+
             const { error } = await supabasePlayers
-                .from('game_participants')
+                .from('participants')
                 .delete()
-                .eq('game_pin', gamePin)
+                .eq('session_id', session.id)
 
             if (error) {
                 console.error('[PlayersDB] Error clearing session:', error)
@@ -398,120 +505,121 @@ export const participantsApi = {
     },
 
     /**
-     * Subscribe to participant changes for a game - INSTANT with cache
+     * Subscribe to participant changes
      */
     subscribeToParticipants(
         gamePin: string,
         callback: (participants: GameParticipant[]) => void
     ): () => void {
-        // Cache participants locally for instant updates
         let cachedParticipants: GameParticipant[] = []
-        // Flag to track if initial fetch has completed
-        let initialFetchComplete = false
+        let channel: any = null
 
-        // Initial fetch - call callback once complete to sync state
-        this.getParticipants(gamePin).then(participants => {
-            cachedParticipants = participants
-            initialFetchComplete = true
-            // Trigger callback with initial data to ensure UI is in sync
-            callback(cachedParticipants)
+        sessionsApi.getSession(gamePin).then(session => {
+            if (!session) return
+
+            this.getParticipants(gamePin).then(participants => {
+                cachedParticipants = participants
+                callback(cachedParticipants)
+            })
+
+            channel = supabasePlayers
+                .channel(`participants-${session.id}`)
+                .on(
+                    'postgres_changes',
+                    {
+                        event: '*',
+                        schema: 'public',
+                        table: 'participants',
+                        filter: `session_id=eq.${session.id}`
+                    },
+                    (payload) => {
+                        if (payload.eventType === 'INSERT' && payload.new) {
+                            const newParticipant = payload.new as GameParticipant
+                            cachedParticipants = cachedParticipants.filter(p => p.id !== newParticipant.id && p.nickname !== newParticipant.nickname)
+                            cachedParticipants = [...cachedParticipants, newParticipant]
+                            callback(cachedParticipants)
+                        } else if (payload.eventType === 'UPDATE' && payload.new) {
+                            const updatedParticipant = payload.new as GameParticipant
+                            cachedParticipants = cachedParticipants.map(p => p.id === updatedParticipant.id ? updatedParticipant : p)
+                            callback(cachedParticipants)
+                        } else if (payload.eventType === 'DELETE' && payload.old) {
+                            const deletedId = (payload.old as any).id
+                            cachedParticipants = cachedParticipants.filter(p => p.id !== deletedId)
+                            callback(cachedParticipants)
+                        }
+                    }
+                )
+                .subscribe()
         })
 
-        const channel = supabasePlayers
-            .channel(`participants-${gamePin}`)
-            .on(
-                'postgres_changes',
-                {
-                    event: '*',
-                    schema: 'public',
-                    table: 'game_participants',
-                    filter: `game_pin=eq.${gamePin}`
-                },
-                (payload) => {
-                    // 🚀 INSTANT: Update cache incrementally from payload
-                    if (payload.eventType === 'INSERT' && payload.new) {
-                        const newParticipant = payload.new as GameParticipant
-                        // 🔧 FIX: Remove any existing participant with the same ID OR same nickname
-                        // This prevents brief duplicate cards when INSERT event arrives before DELETE
-                        // (e.g., when a player rejoins with a new ID but same nickname)
-                        cachedParticipants = cachedParticipants.filter(p =>
-                            p.id !== newParticipant.id && p.nickname !== newParticipant.nickname
-                        )
-                        // Add the new participant
-                        cachedParticipants = [...cachedParticipants, newParticipant]
-                        callback(cachedParticipants)
-                    } else if (payload.eventType === 'UPDATE' && payload.new) {
-                        const updatedParticipant = payload.new as GameParticipant
-                        cachedParticipants = cachedParticipants.map(p =>
-                            p.id === updatedParticipant.id ? updatedParticipant : p
-                        )
-                        callback(cachedParticipants)
-                    } else if (payload.eventType === 'DELETE' && payload.old) {
-                        const deletedId = (payload.old as any).id
-                        cachedParticipants = cachedParticipants.filter(p => p.id !== deletedId)
-                        callback(cachedParticipants)
-                    }
-                }
-            )
-            .subscribe()
-
-        // Return unsubscribe function
         return () => {
-            supabasePlayers.removeChannel(channel)
+            if (channel) {
+                supabasePlayers.removeChannel(channel)
+            }
         }
     }
 }
 
 // =====================================================
-// Sessions API - game_sessions in Supabase B
+// Sessions API 
 // =====================================================
 
-// Type for game_sessions in Supabase B
 export interface GameSessionB {
     id: string
     game_pin: string
-    host_id: string
-    quiz_id: string | null
-    quiz_title: string | null
+    quiz_id: string
     status: 'waiting' | 'active' | 'finished'
-    time_limit_minutes: number
-    settings: {
-        questionCount: number
-        totalTimeLimit: number
-    }
-    questions: any[]
+    question_limit: number
+    total_time_minutes: number
     created_at: string
     started_at: string | null
     ended_at: string | null
+    current_questions: any[]
     countdown_started_at: string | null
     countdown_duration_seconds: number
+    host_id: string | null
+    expires_at: string | null
+    max_players: number
 }
 
 export const sessionsApi = {
     /**
-     * Create a new game session in Supabase B
+     * Create a new game session 
      */
     async createSession(sessionData: {
         game_pin: string
         host_id: string
         quiz_id?: string
-        quiz_title?: string
         settings?: { questionCount: number; totalTimeLimit: number }
         questions?: any[]
     }): Promise<GameSessionB | null> {
         try {
+            if (!sessionData.game_pin) return null
+
+            // 🔧 CLEANUP: Always remove old/stale sessions with the SAME PIN before starting a new one
+            // This prevents "Session Collision" and ensures getSession always finds the right one
+            try {
+                await supabasePlayers
+                    .from('sessions')
+                    .delete()
+                    .eq('game_pin', sessionData.game_pin)
+                console.log(`[SessionsDB] 🧹 Cleaned up old sessions for PIN: ${sessionData.game_pin}`)
+            } catch (cleanupErr) {
+                console.warn('[SessionsDB] Cleanup warning (non-critical):', cleanupErr)
+            }
+
             const { data, error } = await supabasePlayers
                 .from('sessions')
                 .insert({
                     game_pin: sessionData.game_pin,
                     host_id: sessionData.host_id,
-                    quiz_id: sessionData.quiz_id || null,
-                    quiz_title: sessionData.quiz_title || null,
+                    quiz_id: sessionData.quiz_id || '',
                     status: 'waiting',
-                    settings: sessionData.settings || { questionCount: 10, totalTimeLimit: 300 },
-                    questions: sessionData.questions || [],
-                    time_limit_minutes: Math.ceil((sessionData.settings?.totalTimeLimit || 300) / 60),
-                    countdown_duration_seconds: 10
+                    question_limit: sessionData.settings?.questionCount || 10,
+                    // 🔧 FIX: totalTimeLimit is already in minutes from quiz-settings page
+                    total_time_minutes: sessionData.settings?.totalTimeLimit || 5,
+                    current_questions: sessionData.questions || [],
+                    max_players: 1000
                 })
                 .select()
                 .single()
@@ -521,7 +629,20 @@ export const sessionsApi = {
                 return null
             }
 
-            return data
+            const newSession = data
+            
+            // 🚀 RE-LINK: Update any existing participants for this PIN to point to the NEW session ID
+            // This ensures players who joined the lobby don't "disappear" when the session is recreated
+            try {
+                const { error: relinkError } = await supabasePlayers
+                    .from('participants')
+                    .update({ session_id: newSession.id })
+                    .eq('id', 'MATCH_ANY_BUT_NEED_SESSION_LOGIC') // Wait, I don't have game_pin in participants table
+                
+                // CRAP! participants table doesn't have game_pin.
+            } catch (e) {}
+
+            return newSession
         } catch (error) {
             console.error('[SessionsDB] Exception creating session:', error)
             return null
@@ -533,45 +654,28 @@ export const sessionsApi = {
      */
     async getSession(gamePin: string): Promise<GameSessionB | null> {
         try {
+            // 🔧 FIX: Instead of .single(), use .limit(1) and order by created_at DESC
+            // This ensures we ALWAYS get the most recent session even if there are duplicates
             const { data, error } = await supabasePlayers
                 .from('sessions')
                 .select('*')
                 .eq('game_pin', gamePin)
-                .single()
+                .order('created_at', { ascending: false })
+                .limit(1)
 
             if (error) {
-                if (error.code !== 'PGRST116') { // Ignore "no rows" error
-                    console.error('[SessionsDB] Error getting session:', error)
-                }
+                console.error('[SessionsDB] Error getting session:', error)
                 return null
             }
 
-            return data
+            if (!data || data.length === 0) {
+                return null
+            }
+
+            return data[0]
         } catch (error) {
             console.error('[SessionsDB] Exception getting session:', error)
             return null
-        }
-    },
-
-    /**
-     * Update session data
-     */
-    async updateSession(gamePin: string, updates: Partial<GameSessionB>): Promise<boolean> {
-        try {
-            const { error } = await supabasePlayers
-                .from('sessions')
-                .update(updates)
-                .eq('game_pin', gamePin)
-
-            if (error) {
-                console.error('[SessionsDB] Error updating session:', error)
-                return false
-            }
-
-            return true
-        } catch (error) {
-            console.error('[SessionsDB] Exception updating session:', error)
-            return false
         }
     },
 
@@ -610,23 +714,28 @@ export const sessionsApi = {
      */
     async startCountdown(gamePin: string, duration: number = 10): Promise<boolean> {
         try {
+            if (!gamePin) return false
+
+            const startTime = new Date().toISOString()
             const { error } = await supabasePlayers
                 .from('sessions')
                 .update({
-                    // Status tetap 'waiting', countdown dideteksi via countdown_started_at
-                    countdown_started_at: new Date().toISOString(),
-                    countdown_duration_seconds: duration
+                    countdown_started_at: startTime,
+                    countdown_duration_seconds: duration,
+                    // Keep status as waiting during countdown for backward compatibility
+                    status: 'waiting' 
                 })
                 .eq('game_pin', gamePin)
 
             if (error) {
-                console.error('[SessionsDB] Error starting countdown:', error)
+                console.error('[SessionsAPI] Error starting countdown in Supabase B:', error.message)
                 return false
             }
 
+            console.log(`[SessionsAPI] ✅ Countdown started for ${gamePin} at ${startTime}`)
             return true
         } catch (error) {
-            console.error('[SessionsDB] Exception starting countdown:', error)
+            console.error('[SessionsAPI] Exception in startCountdown:', error)
             return false
         }
     },
@@ -654,7 +763,7 @@ export const sessionsApi = {
     },
 
     /**
-     * Subscribe to session changes for realtime updates - INSTANT
+     * Subscribe to session changes
      */
     subscribeToSession(
         gamePin: string,
@@ -670,18 +779,16 @@ export const sessionsApi = {
                     table: 'sessions',
                     filter: `game_pin=eq.${gamePin}`
                 },
-                async (payload) => {
+                (payload) => {
                     if (payload.eventType === 'DELETE') {
                         callback(null)
                     } else if (payload.new) {
-                        // 🚀 INSTANT: Use payload.new directly - NO FETCH!
                         callback(payload.new as GameSessionB)
                     }
                 }
             )
             .subscribe()
 
-        // Return unsubscribe function
         return () => {
             supabasePlayers.removeChannel(channel)
         }

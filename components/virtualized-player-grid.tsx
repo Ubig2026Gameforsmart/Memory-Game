@@ -12,8 +12,8 @@
  */
 
 import React, { useMemo, useCallback } from 'react'
-// @ts-ignore - react-window types may not be fully compatible
-import { FixedSizeGrid as Grid } from 'react-window'
+import * as ReactWindow from 'react-window'
+const { FixedSizeGrid: Grid } = ReactWindow as any
 import { RobustGoogleAvatar } from '@/components/robust-google-avatar'
 import { Trophy, TrendingUp, TrendingDown } from 'lucide-react'
 

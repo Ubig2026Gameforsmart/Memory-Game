@@ -1,8 +1,18 @@
+@font-face {
+  font-family: 'Press Start 2P';
+  src: url('/font/PressStart2P.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+.pixel-font {
+  font-family: 'Press Start 2P', cursive;
+}
+
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* Pixel Font */
-@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 
 @custom-variant dark (&:is(.dark *));
 
@@ -2298,11 +2308,11 @@ button,
     overflow: hidden !important;
   }
 
-  .pixel-quiz-card .sm\\:hidden {
-    overflow: hidden !important;
+  .pixel-quiz-card .sm\:hidden {
+    display: none !important;
   }
 
-  .pixel-quiz-card .sm\\:hidden>div {
+  .pixel-quiz-card .sm\:hidden>div {
     overflow: hidden !important;
   }
 
@@ -2338,7 +2348,7 @@ button,
   }
 
 
-  .pixel-quiz-card .sm\\:hidden .text-xs {
+  .pixel-quiz-card .sm\:hidden .text-xs {
     word-break: break-word !important;
     overflow-wrap: break-word !important;
     hyphens: auto !important;

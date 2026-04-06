@@ -62,7 +62,7 @@ export function UserProfileComponent({ userProfile, onClick }: UserProfileProps)
           />
         ) : (
           <div className="w-8 h-8 bg-gradient-to-br from-purple-400 to-purple-600 rounded-full border-2 border-purple-200 flex items-center justify-center">
-            <span className="text-white font-bold text-sm">
+            <span className="text-white font-bold text-[10px] pixel-font">
               {(userProfile.nickname || userProfile.name || userProfile.username).charAt(0).toUpperCase()}
             </span>
           </div>
@@ -71,7 +71,7 @@ export function UserProfileComponent({ userProfile, onClick }: UserProfileProps)
 
       {/* Name */}
       <div className="flex flex-col">
-        <span className="text-white font-bold text-sm leading-tight">
+        <span className="text-white font-bold text-[10px] leading-tight pixel-font">
           {userProfile.nickname || userProfile.name || userProfile.username}
         </span>
       </div>

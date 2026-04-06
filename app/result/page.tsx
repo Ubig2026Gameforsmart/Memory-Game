@@ -47,15 +47,13 @@ function ResultPageContent() {
   const router = useRouter()
   const roomCode = searchParams.get("roomCode")
 
-  // CRITICAL: Retry mechanism untuk fetch room
-  const fetchRoom = async (attempt = 1, maxAttempts = 3) => {
+  // 🚀 PROFESSIONAL RETRY SYSTEM: Increase to 10 attempts for slow syncs
+  const fetchRoom = async (attempt = 1, maxAttempts = 10) => {
     try {
-      setError(null)
       if (!roomCode) {
         setError("Room code not found")
         return
       }
-
 
       const roomData = await roomManager.getRoom(roomCode)
 
@@ -70,7 +68,6 @@ function ResultPageContent() {
             const sessionData = await sessionManager.getSessionData(sessionId)
             if (sessionData && sessionData.user_type === 'player') {
               player = sessionData.user_data
-
             }
           } catch (error) {
             console.warn("Error getting session data:", error)
@@ -81,7 +78,6 @@ function ResultPageContent() {
           const playerData = localStorage.getItem("currentPlayer")
           if (playerData) {
             player = JSON.parse(playerData)
-
           }
         }
 
@@ -95,9 +91,13 @@ function ResultPageContent() {
             return bTotal - aTotal
           })
 
-          const playerIndex = sortedPlayers.findIndex(p => p.id === player.id)
+          const playerIndex = sortedPlayers.findIndex(p => 
+            p.id === player.id || 
+            (p.nickname && player.nickname && p.nickname.trim().toLowerCase() === player.nickname.trim().toLowerCase())
+          )
           if (playerIndex !== -1) {
             const playerObj = sortedPlayers[playerIndex]
+            setError(null) // Clear any persistent error if found
             // Use the avatar from session data (player) instead of room data
             const playerWithCorrectAvatar = {
               ...playerObj,
@@ -109,19 +109,25 @@ function ResultPageContent() {
               player: playerWithCorrectAvatar
             })
           } else {
-            // Player tidak ditemukan di room, coba lagi
+            // Player tidak ditemukan di room, coba lagi dengan pesan syncing
             if (attempt < maxAttempts) {
-
-              setTimeout(() => fetchRoom(attempt + 1), 1000 * attempt)
+              setError(`Syncing your progress... (Attempt ${attempt}/${maxAttempts})`)
+              setTimeout(() => fetchRoom(attempt + 1), 1500)
             } else {
-              setError("Player data not found. Please ensure you completed the quiz.")
+              setError("Player data not found. Please ensure you completed the quiz and wait for host to finish.")
             }
           }
         } else {
           setError("No player session found. Please join the game again.")
         }
       } else {
-        setError("Room not found. The game may have been ended.")
+        // Room not found, could be syncing or already deleted
+        if (attempt < maxAttempts) {
+          setError(`Connecting to result server... (${attempt}/${maxAttempts})`)
+          setTimeout(() => fetchRoom(attempt + 1), 1500)
+        } else {
+          setError("Room not found. The game may have ended or been closed by host.")
+        }
       }
     } catch (error) {
       console.error("Error fetching room:", error)
