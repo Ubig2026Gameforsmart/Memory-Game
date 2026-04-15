@@ -5,33 +5,35 @@ import Link from "next/link"
 import Image from "next/image"
 import { useEffect, useRef, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
-import { useAuth } from "@/hooks/use-auth"
 import { UserProfileComponent } from "@/components/user-profile"
 import { LogoutConfirmationDialog } from "@/components/logout-confirmation-dialog"
 import { useTranslation } from "react-i18next"
 import { LanguageSelector } from "@/components/language-selector"
 import { useToast } from "@/hooks/use-toast"
 import { usePwaInstall } from "@/hooks/use-pwa-install"
+import { useAuth } from "@/contexts/AuthContext"
+import { supabase } from "@/lib/supabase"
 
 export default function HomePage() {
   const router = useRouter()
   const dragCardRef = useRef<HTMLDivElement | null>(null)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const { userProfile, isAuthenticated, logout, showLogoutDialog, cancelLogout, showLogoutConfirmation, loading } = useAuth()
+  const { user, profile, loading, isRestoringSession } = useAuth()
   const { t } = useTranslation()
   const pathname = usePathname()
   const { canInstall, hasInstallEvent, showPrompt, triggerInstall, dismissPrompt } = usePwaInstall()
 
   const { toast } = useToast()
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
+  const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false)
 
   // Redirect to login if not authenticated
   useEffect(() => {
-    if (!loading && !isAuthenticated) {
+    if (!loading && !user) {
       router.push('/login')
     }
-  }, [loading, isAuthenticated, router])
+  }, [loading, user, router])
 
   // 🔔 Show notifications from query params (e.g., kicked, host-left)
   useEffect(() => {
@@ -167,8 +169,24 @@ export default function HomePage() {
     )
   }
 
+  const handleLogoutClick = () => {
+    setIsMenuOpen(false)
+    setShowLogoutConfirmation(true)
+  }
+
+  const performLogout = async () => {
+    await supabase.auth.signOut()
+    localStorage.clear()
+    setShowLogoutConfirmation(false)
+    window.location.replace('/login')
+  }
+
+  const cancelLogout = () => {
+    setShowLogoutConfirmation(false)
+  }
+
   // If not authenticated (and redirecting), don't render content
-  if (!isAuthenticated) {
+  if (!user) {
     return null
   }
 
@@ -195,9 +213,9 @@ export default function HomePage() {
       <div className="absolute top-4 right-4 z-50 menu-container">
         <div className="relative flex items-center gap-2">
           {/* User Profile (when logged in) */}
-          {isAuthenticated && userProfile && (
+          {user && profile && (
             <UserProfileComponent
-              userProfile={userProfile}
+              userProfile={profile}
               onClick={() => setIsMenuOpen(!isMenuOpen)}
             />
           )}
@@ -264,9 +282,9 @@ export default function HomePage() {
               {/* Divider */}
               <div className="border-t border-purple-500/40 my-1"></div>
 
-              {isAuthenticated ? (
+              {user ? (
                 <button
-                  onClick={showLogoutDialog}
+                  onClick={handleLogoutClick}
                   className="w-full px-4 py-3 text-left hover:bg-purple-800/60 transition-colors duration-200 flex items-center gap-3"
                 >
                   <LogIn className="w-4 h-4 text-white" />
@@ -418,9 +436,9 @@ export default function HomePage() {
       {/* Logout Confirmation Dialog */}
       <LogoutConfirmationDialog
         isOpen={showLogoutConfirmation}
-        onConfirm={logout}
+        onConfirm={performLogout}
         onCancel={cancelLogout}
-        userName={userProfile?.nickname || userProfile?.name || userProfile?.username}
+        userName={profile?.nickname || profile?.fullname || profile?.username || user?.email}
       />
 
       {showPrompt && pathname === "/" && (

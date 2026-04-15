@@ -11,7 +11,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { AvatarSelector } from "@/components/avatar-selector"
 import { useRouter } from "next/navigation"
-import { useAuth } from "@/hooks/use-auth"
+import { useAuth } from "@/contexts/AuthContext"
 import { roomManager } from "@/lib/room-manager"
 import { sessionManager } from "@/lib/supabase-session-manager"
 import { QRScanner } from "@/components/qr-scanner"
@@ -29,7 +29,8 @@ function JoinPageContent() {
   const isFromUrlDirect = !!(roomCodeParam || roomCodePath)
 
   const { toast } = useToast()
-  const { userProfile, isAuthenticated, loading } = useAuth()
+  const { user, profile: userProfile, loading } = useAuth()
+  const isAuthenticated = !!user
   const [nickname, setNickname] = useState("")
   const [roomCode, setRoomCode] = useState("")
   const [selectedAvatar, setSelectedAvatar] = useState("") // Will be set to random avatar

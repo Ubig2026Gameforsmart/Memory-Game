@@ -2,14 +2,15 @@
 
 import { useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { useAuth } from '@/hooks/use-auth'
+import { useAuth } from '@/contexts/AuthContext'
 
 interface AuthGuardProps {
   children: React.ReactNode
 }
 
 export function AuthGuard({ children }: AuthGuardProps) {
-  const { isAuthenticated, loading } = useAuth()
+  const { user, loading } = useAuth()
+  const isAuthenticated = !!user
   const router = useRouter()
   const pathname = usePathname()
 
