@@ -6,6 +6,7 @@ import './globals.css'
 import { AuthGuard } from '../components/auth-guard'
 import { I18nInitializer } from '../components/i18n-initializer'
 import { PageTransition } from '../components/page-transition'
+import { AuthProvider } from '@/contexts/AuthContext'
 
 export const viewport = {
   themeColor: '#1a1a2e',
@@ -79,11 +80,13 @@ export default function RootLayout({
       </head>
       <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable} antialiased`}>
         <I18nInitializer>
-          <AuthGuard>
-            <PageTransition>
-              {children}
-            </PageTransition>
-          </AuthGuard>
+          <AuthProvider>
+            <AuthGuard>
+              <PageTransition>
+                {children}
+              </PageTransition>
+            </AuthGuard>
+          </AuthProvider>
           <Analytics />
         </I18nInitializer>
       </body>

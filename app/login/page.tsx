@@ -7,12 +7,13 @@ import { ArrowLeft, LogIn, Eye, EyeOff, Mail, Lock, Brain } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
-import { useAuth } from "@/hooks/use-auth"
+import { useAuth } from "@/contexts/AuthContext"
 import Image from "next/image"
 
 export default function LoginPage() {
   const router = useRouter()
-  const { isAuthenticated } = useAuth()
+  const { user } = useAuth()
+  const isAuthenticated = !!user
   const [formData, setFormData] = useState({
     email: "",
     password: ""
@@ -91,7 +92,7 @@ export default function LoginPage() {
 
         if (profileError || !profile) {
           console.error("Username lookup error:", profileError)
-          setErrors({ general: "Kata salah" })
+          setErrors({ general: "Email/Username atau password salah" })
           setIsLoading(false)
           return
         }
@@ -105,7 +106,7 @@ export default function LoginPage() {
 
       if (error) {
         console.error("Login error:", error)
-        setErrors({ general: "Kata salah" })
+        setErrors({ general: "Email/Username atau password salah" })
       } else if (data.user) {
         // Successfully logged in, redirect will happen via useEffect
       }

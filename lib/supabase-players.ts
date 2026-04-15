@@ -13,7 +13,13 @@ const supabasePlayersUrl = process.env.NEXT_PUBLIC_SUPABASE_PLAYERS_URL || 'http
 const supabasePlayersAnonKey = process.env.NEXT_PUBLIC_SUPABASE_PLAYERS_ANON_KEY || 'placeholder-key'
 
 // Create client for Players database (will only be used if properly configured)
-export const supabasePlayers: SupabaseClient = createClient(supabasePlayersUrl, supabasePlayersAnonKey)
+export const supabasePlayers: SupabaseClient = createClient(supabasePlayersUrl, supabasePlayersAnonKey, {
+    auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+        detectSessionInUrl: false,
+    }
+})
 
 // Helper function to check if Players Supabase is properly configured
 export const isPlayersSupabaseConfigured = () => {
